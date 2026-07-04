@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>BG · Shader Dashboard</title>
+<style>
+  :root {
+    --bg: #1c1c1f;
+    --panel: #26262b;
+    --panel2: #2f2f36;
+    --line: #3a3a42;
+    --txt: #e6e6ea;
+    --mut: #9a9aa6;
+    --acc: #4f9bff;
+    --ok: #2ea36b;
+    --warn: #c7502e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--txt);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button {
+    font: inherit; color: var(--txt); cursor: pointer;
+    background: var(--panel2); border: 1px solid var(--line);
+    padding: 6px 12px; border-radius: 7px;
+  }
+  button:hover { border-color: var(--mut); }
+  button.primary { background: var(--ok); border-color: var(--ok); color: #fff; }
+  button.active { outline: 2px solid var(--acc); outline-offset: 1px; }
+  button.mini { padding: 2px 8px; border-radius: 5px; }
+  button.mini.rm { color: var(--warn); }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  main {
+    display: grid;
+    grid-template-columns: minmax(320px, 1fr) minmax(340px, 1.25fr) minmax(250px, 0.85fr);
+    gap: 16px;
+    padding: 16px;
+    align-items: start;
+  }
+  @media (max-width: 1180px) { main { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; padding: 10px; gap: 12px; }
+    .card { padding: 10px 11px; margin-bottom: 12px; }
+    .preview-cap { font-size: 12px; }
+    .toprow { gap: 8px; }
+    .field { min-width: 0; }
+    .preview-wrap.pinned { width: min(52vw, 220px); bottom: 10px; right: 10px; }
+  }
+
+  .cap-right { display: flex; gap: 8px; align-items: center; }
+  .footer-hint { margin-top: 12px; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+  }
+  .card > h3, .card > summary {
+    margin: 0 0 10px;
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--mut);
+  }
+  details.card > summary { cursor: pointer; list-style: none; margin-bottom: 0; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card[open] > .grid { margin-top: 10px; }
+
+  .toprow { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 12px; color: var(--mut); }
+  select, input[type="text"] {
+    background: var(--bg); color: var(--txt);
+    border: 1px solid var(--line); border-radius: 7px;
+    padding: 7px 9px; min-width: 180px;
+  }
+  select:focus, input[type="text"]:focus { outline: none; border-color: var(--acc); }
+
+  /* thumbnail tiles: shader rows + preset/user strips */
+  .subhead { font-size: 12px; color: var(--mut); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 6px; }
+  .subhead:not(:first-child) { margin-top: 14px; }
+  .thumb-btn {
+    position: relative; display: block; flex: none;
+    border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+    background-color: #000; background-size: cover; background-position: center;
+    cursor: pointer; padding: 0; color: #fff;
+  }
+  .thumb-btn:hover { border-color: var(--acc); }
+  .thumb-btn.active { outline: 2px solid var(--acc); outline-offset: 1px; border-color: var(--acc); }
+  .thumb-btn .tlabel {
+    position: absolute; left: 7px; right: 7px; bottom: 5px;
+    font-size: 12px; font-weight: 600; color: #fff;
+    text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,.95);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+  }
+  .thumb-btn .del {
+    position: absolute; top: 4px; right: 4px; width: 18px; height: 18px;
+    line-height: 15px; padding: 0; border-radius: 50%;
+    background: rgba(0,0,0,.55); color: #fff; font-size: 13px; border: 1px solid var(--line);
+  }
+  .thumb-btn .del:hover { background: var(--warn); border-color: var(--warn); }
+
+  /* looks: one row per shader; each row's looks scroll horizontally.
+     The list grows to fit all rows (the page scrolls); only the rows scroll sideways. */
+  .looks-list { display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+  .looks-list .thumb-strip .thumb-btn { width: 160px; height: 90px; }
+
+  /* preset / user strips: scroll horizontally when they overflow */
+  .thumb-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+  .thumb-strip .thumb-btn { width: 132px; height: 76px; }
+  .thumb-strip .empty { font-size: 12px; color: var(--mut); padding: 6px 2px; }
+  .save-row { display: flex; gap: 8px; margin-top: 10px; }
+  .save-row input { flex: 1; min-width: 0; }
+
+  /* parameter controls */
+  .ctrl { padding: 7px 0; }
+  .ctrl .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .ctrl .head label { color: var(--txt); }
+  .ctrl .val, .count, .hex { color: var(--mut); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px; background: var(--line); border-radius: 4px; outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--acc); cursor: pointer; border: 2px solid var(--bg);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%; background: var(--acc);
+    cursor: pointer; border: 2px solid var(--bg);
+  }
+  input[type="range"].alpha { width: 90px; }
+  input[type="color"] {
+    -webkit-appearance: none; appearance: none;
+    width: 34px; height: 26px; padding: 0; border: 1px solid var(--line);
+    border-radius: 6px; background: none; cursor: pointer;
+  }
+  input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  input[type="color"]::-webkit-color-swatch { border: none; border-radius: 5px; }
+  .colorinp { display: flex; align-items: center; gap: 8px; flex: 1; }
+  .colorinp .hex { min-width: 78px; }
+  .row.color { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .ctrl.check label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .ctrl.check input { width: 16px; height: 16px; }
+  .colorlist { display: flex; flex-direction: column; gap: 2px; }
+
+  /* preview */
+  .preview-wrap { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #000; }
+  #preview { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .preview-wrap.pinned {
+    position: fixed; right: 14px; bottom: 14px;
+    width: min(40vw, 260px); aspect-ratio: 16 / 9; z-index: 200;
+    box-shadow: 0 10px 30px rgba(0,0,0,.55); border-color: var(--acc);
+  }
+  #pinBtn.active { outline: 2px solid var(--acc); outline-offset: 1px; }
+  .preview-wrap.off::after {
+    content: "Preview off — click “Preview: on”"; position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--mut); font-size: 13px; background: #000;
+  }
+  .preview-cap { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  #shaderName { font-weight: 600; }
+  .hint { color: var(--mut); font-size: 12px; }
+  a { color: var(--acc); }
+  #previewToggle.off { color: var(--warn); border-color: var(--warn); }
+</style>
+</head>
+<body>
+
+<main>
+  <!-- Column 1: preview + visibility + presets -->
+  <section class="col">
+    <div class="preview-wrap" id="previewWrap"><div id="preview"></div></div>
+    <div class="preview-cap">
+      <span id="shaderName">—</span>
+      <div class="cap-right">
+        <span class="hint">overlay: <a id="overlayLink" target="_blank" href="bg.html">bg.html</a></span>
+        <button id="pinBtn" class="mini" title="Pin preview — keep it visible while scrolling">📌</button>
+        <button id="previewToggle" class="mini" title="Pause + drop the preview WebGL context to save battery">Preview: on</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="subhead">Presets</div>
+      <div class="save-row">
+        <input id="presetName" type="text" placeholder="Save current look as…" maxlength="40" />
+        <button id="presetSave">Save</button>
+      </div>
+      <div id="presetStrip" class="thumb-strip"></div>
+      <div class="subhead">Looks</div>
+      <div id="looksList" class="looks-list"></div>
+    </div>
+    <p class="hint footer-hint">
+      Open <a id="overlayLink2" target="_blank" href="bg.html">bg.html</a> on the display / OBS
+      (as a URL, not a local file — it needs ES modules). State syncs over the broker; reconnects restore it.
+    </p>
+  </section>
+
+  <!-- Column 2: speed/reset + appearance -->
+  <section class="col">
+    <div class="card">
+      <div class="toprow">
+        <div class="field">
+          <label for="speed">Speed: <span id="speedVal">1.00</span></label>
+          <input id="speed" type="range" min="0" max="5" step="0.01" style="min-width:180px" />
+        </div>
+        <div class="field" style="justify-content:flex-end">
+          <button id="resetBtn" title="Reset this shader to its defaults">Reset</button>
+          <button id="hideBtn">Hide</button>
+          <button id="showBtn" class="primary">Show</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Appearance</h3>
+      <div id="params"></div>
+    </div>
+  </section>
+
+  <!-- Column 3: transform (open) -->
+  <section class="col">
+    <details class="card" open>
+      <summary>Transform &amp; fit</summary>
+      <div id="transform" class="grid"></div>
+    </details>
+  </section>
+</main>
+
+<script type="module">
+  import van from "../js/van.js";
+  import { multiBrokerState } from "../js/broker.js";
+  import {
+    SHADERS, byId, makeConfig, createShaderView, renderConfigThumbnail, ENUMS, ShaderFitOptions,
+  } from "./shaders.js";
+  import { OFFICIAL } from "./presets.js";
+
+  // ---- connection ----
+  const password = location.hash.slice(1) || "demo";
+  const query = Object.fromEntries(new URLSearchParams(location.search));
+  for (const id of ["overlayLink", "overlayLink2"]) {
+    const a = document.getElementById(id);
+    a.href = "../bg.html" + location.hash + (location.search || "");
+  }
+
+  // ---- state ----
+  let cfg = makeConfig(SHADERS[0].id);
+  let renderedShader = null;
+  let lastSent = "";
+  const clone = (v) => JSON.parse(JSON.stringify(v));
+
+  const s = multiBrokerState({ show: true, config: "" });
+  // Note: we deliberately do NOT auto-push our default on load — that would
+  // clobber a running overlay's state every time the dashboard is reopened.
+  // We broadcast only on real user interaction; a stored config is restored via
+  // the incoming derive below.
+  s.connect({ space: "bg", password, ...query });
+
+  // ---- live preview (hideable to save battery) ----
+  const STUB_VIEW = { update() {}, setSpeed() {}, dispose() {} };
+  const previewHost = document.getElementById("preview");
+  const previewWrap = document.getElementById("previewWrap");
+  const previewToggle = document.getElementById("previewToggle");
+  let previewOn = (localStorage.getItem("bg.preview") ?? "1") !== "0";
+  let preview = STUB_VIEW;
+
+  function setPreview(on) {
+    previewOn = on;
+    localStorage.setItem("bg.preview", on ? "1" : "0");
+    previewToggle.textContent = "Preview: " + (on ? "on" : "off");
+    previewToggle.classList.toggle("off", !on);
+    previewWrap.classList.toggle("off", !on);
+    preview.dispose(); // a no-op when already off (STUB) — avoids stacking mounts
+    if (on) { preview = createShaderView(previewHost); preview.update(cfg); }
+    else { preview = STUB_VIEW; }
+  }
+  previewToggle.addEventListener("click", () => setPreview(!previewOn));
+  setPreview(previewOn); // sync button/overlay with initial state
+
+  // pin preview as a floating picture-in-picture so it stays visible while scrolling
+  const pinBtn = document.getElementById("pinBtn");
+  let pinned = localStorage.getItem("bg.pin") === "1";
+  function setPin(on) {
+    pinned = on;
+    localStorage.setItem("bg.pin", on ? "1" : "0");
+    previewWrap.classList.toggle("pinned", on);
+    pinBtn.classList.toggle("active", on);
+  }
+  pinBtn.addEventListener("click", () => setPin(!pinned));
+  setPin(pinned);
+
+  // ---- tiny DOM helper ----
+  function h(tag, props = {}, ...kids) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (v == null || v === false) continue;
+      if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2).toLowerCase(), v);
+      else if (k === "class") el.className = v;
+      else el.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat()) {
+      if (kid == null || kid === false) continue;
+      el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+    }
+    return el;
+  }
+
+  // ---- color helpers (support #rrggbbaa) ----
+  const rgbPart = (hex) => (hex || "").slice(0, 7);
+  const aPart = (hex) => ((hex || "").length === 9 ? parseInt(hex.slice(7, 9), 16) / 255 : 1);
+  const withAlpha = (rgb, a) => rgb + Math.max(0, Math.min(255, Math.round(a * 255))).toString(16).padStart(2, "0");
+  const fmtV = (v, step) => (step >= 1 ? Math.round(v) : (+v).toFixed(2));
+
+  // ---- param controls ----
+  function numControl(spec) {
+    const valEl = h("span", { class: "val" });
+    const inp = h("input", {
+      type: "range", min: spec.min, max: spec.max, step: spec.step, value: cfg.params[spec.key],
+      oninput: (e) => { cfg.params[spec.key] = parseFloat(e.target.value); valEl.textContent = fmtV(cfg.params[spec.key], spec.step); commit(); },
+    });
+    valEl.textContent = fmtV(cfg.params[spec.key], spec.step);
+    return h("div", { class: "ctrl" }, h("div", { class: "head" }, h("label", {}, spec.label), valEl), inp);
+  }
+
+  function colorControl(spec) {
+    const hexEl = h("code", { class: "hex" });
+    const pick = h("input", { type: "color", value: rgbPart(cfg.params[spec.key]),
+      oninput: (e) => { cfg.params[spec.key] = withAlpha(e.target.value, aPart(cfg.params[spec.key])); hexEl.textContent = cfg.params[spec.key]; commit(); } });
+    const al = h("input", { type: "range", class: "alpha", min: 0, max: 1, step: 0.01, value: aPart(cfg.params[spec.key]),
+      oninput: (e) => { cfg.params[spec.key] = withAlpha(rgbPart(cfg.params[spec.key]), parseFloat(e.target.value)); hexEl.textContent = cfg.params[spec.key]; commit(); } });
+    hexEl.textContent = cfg.params[spec.key];
+    return h("div", { class: "ctrl" }, h("div", { class: "head" }, h("label", {}, spec.label)),
+      h("div", { class: "colorinp" }, pick, al, hexEl));
+  }
+
+  function colorsControl(spec) {
+    const listEl = h("div", { class: "colorlist" });
+    const countEl = h("span", { class: "count" });
+    const addBtn = h("button", { class: "mini", title: "Add color",
+      onclick: () => { cfg.params[spec.key].push("#ffffff"); rebuild(); commit(); } }, "+");
+    const item = (i) => {
+      const hx = h("code", { class: "hex" });
+      const cur = () => cfg.params[spec.key][i];
+      const pick = h("input", { type: "color", value: rgbPart(cur()),
+        oninput: (e) => { cfg.params[spec.key][i] = withAlpha(e.target.value, aPart(cur())); hx.textContent = cur(); commit(); } });
+      const al = h("input", { type: "range", class: "alpha", min: 0, max: 1, step: 0.01, value: aPart(cur()),
+        oninput: (e) => { cfg.params[spec.key][i] = withAlpha(rgbPart(cur()), parseFloat(e.target.value)); hx.textContent = cur(); commit(); } });
+      hx.textContent = cur();
+      const rm = h("button", { class: "mini rm", title: "Remove",
+        onclick: () => { cfg.params[spec.key].splice(i, 1); rebuild(); commit(); } }, "×");
+      return h("div", { class: "row color" }, h("div", { class: "colorinp" }, pick, al, hx), rm);
+    };
+    function rebuild() {
+      listEl.replaceChildren(...cfg.params[spec.key].map((_, i) => item(i)));
+      countEl.textContent = `${cfg.params[spec.key].length}/${spec.max}`;
+      addBtn.disabled = cfg.params[spec.key].length >= spec.max;
+    }
+    rebuild();
+    return h("div", { class: "ctrl colors" },
+      h("div", { class: "head" }, h("label", {}, spec.label), h("div", {}, countEl, addBtn)), listEl);
+  }
+
+  function selectControl(spec) {
+    const sel = h("select", { onchange: (e) => { cfg.params[spec.key] = e.target.value; commit(); } });
+    for (const o of Object.keys(ENUMS[spec.enum])) {
+      const op = h("option", { value: o }, o);
+      if (o === cfg.params[spec.key]) op.selected = true;
+      sel.append(op);
+    }
+    return h("div", { class: "ctrl" }, h("div", { class: "head" }, h("label", {}, spec.label)), sel);
+  }
+
+  function boolControl(spec) {
+    const cb = h("input", { type: "checkbox" });
+    cb.checked = !!cfg.params[spec.key];
+    cb.addEventListener("change", () => { cfg.params[spec.key] = cb.checked; commit(); });
+    return h("div", { class: "ctrl check" }, h("label", {}, cb, h("span", {}, spec.label)));
+  }
+
+  function renderParams() {
+    const def = byId.get(cfg.shader);
+    const wrap = document.getElementById("params");
+    wrap.replaceChildren();
+    renderedShader = cfg.shader;
+    for (const spec of def.params) {
+      let c;
+      if (spec.type === "colors") c = colorsControl(spec);
+      else if (spec.type === "color") c = colorControl(spec);
+      else if (spec.type === "select") c = selectControl(spec);
+      else if (spec.type === "boolean") c = boolControl(spec);
+      else c = numControl(spec);
+      wrap.append(c);
+    }
+  }
+
+  // ---- transform controls (shared sizing uniforms) ----
+  function renderTransform() {
+    const wrap = document.getElementById("transform");
+    wrap.replaceChildren();
+    const fitSel = h("select", { onchange: (e) => { cfg.sizing.fit = e.target.value; commit(); } });
+    for (const o of Object.keys(ShaderFitOptions)) {
+      const op = h("option", { value: o }, o);
+      if (o === cfg.sizing.fit) op.selected = true;
+      fitSel.append(op);
+    }
+    wrap.append(h("div", { class: "ctrl" }, h("div", { class: "head" }, h("label", {}, "Fit")), fitSel));
+    const nums = [
+      ["scale", "Scale", 0.01, 4, 0.01],
+      ["rotation", "Rotation", 0, 360, 1],
+      ["originX", "Origin X", 0, 1, 0.01],
+      ["originY", "Origin Y", 0, 1, 0.01],
+      ["offsetX", "Offset X", -1, 1, 0.01],
+      ["offsetY", "Offset Y", -1, 1, 0.01],
+      ["worldWidth", "World width", 0, 2000, 1],
+      ["worldHeight", "World height", 0, 2000, 1],
+    ];
+    for (const [key, label, min, max, step] of nums) {
+      const valEl = h("span", { class: "val" });
+      const inp = h("input", { type: "range", min, max, step, value: cfg.sizing[key],
+        oninput: (e) => { cfg.sizing[key] = parseFloat(e.target.value); valEl.textContent = fmtV(cfg.sizing[key], step); commit(); } });
+      valEl.textContent = fmtV(cfg.sizing[key], step);
+      wrap.append(h("div", { class: "ctrl" }, h("div", { class: "head" }, h("label", {}, label), valEl), inp));
+    }
+  }
+
+  // ---- thumbnails: lazy (IntersectionObserver) + serialized (one WebGL context) ----
+  const thumbCache = new Map();
+  const thumbQueue = [];
+  let thumbBusy = false;
+  const thumbIO = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting && e.target._thumb) {
+        thumbQueue.push(e.target._thumb);
+        e.target._thumb = null;
+        thumbIO.unobserve(e.target);
+        pumpThumbs();
+      }
+    }
+  }, { rootMargin: "300px" });
+  async function pumpThumbs() {
+    if (thumbBusy) return;
+    thumbBusy = true;
+    while (thumbQueue.length) {
+      const { el, key, config } = thumbQueue.shift();
+      if (thumbCache.has(key)) { el.style.backgroundImage = `url("${thumbCache.get(key)}")`; continue; }
+      const url = await renderConfigThumbnail(config);
+      if (url) { thumbCache.set(key, url); el.style.backgroundImage = `url("${url}")`; }
+      await new Promise((r) => requestAnimationFrame(r)); // let GC reclaim the WebGL context
+    }
+    thumbBusy = false;
+  }
+  function attachThumb(el, key, config) {
+    if (thumbCache.has(key)) { el.style.backgroundImage = `url("${thumbCache.get(key)}")`; return; }
+    el._thumb = { el, key, config };
+    thumbIO.observe(el);
+  }
+
+  // ---- looks: every official preset as a row. Each shader's "Default" preset
+  // is labelled with the shader name, so the flat list reads grouped by shader. ----
+  const LOOKS = [];
+  for (const sh of SHADERS) {
+    const list = OFFICIAL[sh.id] || [];
+    list.forEach((p, i) => LOOKS.push({ shader: sh.id, index: i, name: i === 0 ? sh.label : p.name }));
+  }
+  const lookIndex = (shader, i) => LOOKS.findIndex((l) => l.shader === shader && l.index === i);
+
+  function lookConfig(shader, i) {
+    const p = (OFFICIAL[shader] || [])[i];
+    const c = makeConfig(shader);
+    if (!p) return c;
+    Object.assign(c.params, clone(p.params));
+    c.sizing = clone(p.sizing);
+    c.speed = p.speed;
+    return c;
+  }
+
+  const looksList = document.getElementById("looksList");
+  const lookRowFor = new Map(); // flat index -> tile
+  for (const sh of SHADERS) {
+    const presets = OFFICIAL[sh.id] || [];
+    if (!presets.length) continue;
+    const strip = h("div", { class: "thumb-strip" }); // one horizontal row per shader
+    for (let i = 0; i < presets.length; i++) {
+      const fi = lookIndex(sh.id, i);
+      const lk = LOOKS[fi];
+      const tile = h("div", { class: "thumb-btn", role: "button", tabindex: "0",
+        title: "Apply " + lk.name, onclick: () => applyLook(fi) },
+        h("span", { class: "tlabel" }, lk.name));
+      attachThumb(tile, "look:" + sh.id + ":" + i, lookConfig(sh.id, i));
+      lookRowFor.set(fi, tile);
+      strip.append(tile);
+    }
+    looksList.append(strip);
+  }
+
+  function applyLook(fi) {
+    const lk = LOOKS[fi];
+    if (!lk) return;
+    cfg = lookConfig(lk.shader, lk.index);
+    activeLook = fi;
+    renderAll();
+    commit();
+  }
+
+  // ---- top-level wiring ----
+
+  const speedIn = document.getElementById("speed");
+  const speedVal = document.getElementById("speedVal");
+  speedIn.addEventListener("input", () => {
+    cfg.speed = parseFloat(speedIn.value);
+    speedVal.textContent = (+speedIn.value).toFixed(2);
+    commit();
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", () => { cfg = makeConfig(cfg.shader); activeLook = lookIndex(cfg.shader, 0); renderAll(); commit(); });
+
+  const showBtn = document.getElementById("showBtn");
+  const hideBtn = document.getElementById("hideBtn");
+  showBtn.addEventListener("click", () => { s.show = true; });
+  hideBtn.addEventListener("click", () => { s.show = false; });
+
+  function renderAll() {
+    const def = byId.get(cfg.shader);
+    document.getElementById("shaderName").textContent = def.label;
+    for (const [fi, row] of lookRowFor) row.classList.toggle("active", fi === activeLook);
+    lookRowFor.get(activeLook)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    speedIn.value = cfg.speed;
+    speedVal.textContent = (+cfg.speed).toFixed(2);
+    renderParams();
+    renderTransform();
+  }
+
+  function commit() {
+    const str = JSON.stringify(cfg);
+    lastSent = str;
+    s.config = str;
+    preview.update(cfg);
+  }
+
+  // activeLook = flat index into LOOKS of the applied look (-1 = none / custom)
+  let activeLook = lookIndex(SHADERS[0].id, 0);
+
+  // user presets (global: any shader, stored in localStorage)
+  const PRESET_KEY = "bg.presets.v2";
+  const loadUserPresets = () => { try { return JSON.parse(localStorage.getItem(PRESET_KEY)) || []; } catch { return []; } };
+  const saveUserPresets = (arr) => localStorage.setItem(PRESET_KEY, JSON.stringify(arr));
+  let userPresets = loadUserPresets();
+  const presetStrip = document.getElementById("presetStrip");
+  const presetName = document.getElementById("presetName");
+  function refreshUserBtns() {
+    if (!userPresets.length) { presetStrip.replaceChildren(h("span", { class: "empty" }, "— none yet —")); return; }
+    presetStrip.replaceChildren(...userPresets.map((p, i) => {
+      const ci = clone(p.config);
+      const tile = h("div", { class: "thumb-btn", role: "button", tabindex: "0",
+        title: "Apply " + p.name + "  ·  " + (byId.get(p.config.shader)?.label || ""), onclick: () => applyUser(i) },
+        h("span", { class: "tlabel" }, p.name),
+        h("button", { class: "del", title: "Delete " + p.name,
+          onclick: (e) => { e.stopPropagation(); deleteUser(i); } }, "×"));
+      attachThumb(tile, "u:" + JSON.stringify(ci), ci);
+      return tile;
+    }));
+  }
+  function applyUser(i) {
+    const p = userPresets[i];
+    if (!p) return;
+    cfg = clone(p.config);
+    activeLook = -1;
+    renderAll();
+    commit();
+  }
+  function deleteUser(i) {
+    userPresets.splice(i, 1);
+    saveUserPresets(userPresets);
+    refreshUserBtns();
+  }
+  document.getElementById("presetSave").addEventListener("click", () => {
+    const name = presetName.value.trim();
+    if (!name) { presetName.focus(); return; }
+    userPresets.push({ name, config: clone(cfg) });
+    saveUserPresets(userPresets);
+    refreshUserBtns();
+    presetName.value = "";
+  });
+  refreshUserBtns();
+
+  // ---- incoming state from the broker ----
+  van.derive(() => {
+    const raw = s.config;
+    if (!raw || raw === lastSent) return; // skip our own echo
+    let c;
+    try { c = JSON.parse(raw); } catch { return; }
+    cfg = c;
+    activeLook = -1; // remote state — we can't map it back to a look
+    renderAll();
+    preview.update(cfg);
+  });
+
+  van.derive(() => {
+    const visible = s.show;
+    showBtn.classList.toggle("active", visible);
+    hideBtn.classList.toggle("active", !visible);
+  });
+
+  // ---- go ----
+  renderAll();
+  preview.update(cfg);
+</script>
+</body>
+</html>

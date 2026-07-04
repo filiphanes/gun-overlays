@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>BG · Paper Shader</title>
+<style>
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    /* transparent so a HIDDEN overlay composites away cleanly in OBS, and so
+       shaders with a transparent colorBack composite over the scene. */
+    background: transparent;
+    overflow: hidden;
+  }
+  /* The shader host fills the screen. ShaderMount prepends a <canvas> inside it. */
+  #host {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 1;
+    transition: opacity 0.45s ease;
+  }
+  #host.hidden { opacity: 0; }
+  #label {
+    position: fixed;
+    left: 8px;
+    bottom: 6px;
+    font: 11px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: rgba(255, 255, 255, 0.45);
+    text-shadow: 0 1px 2px #000;
+    pointer-events: none;
+    user-select: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #label.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="host" class="hidden"></div>
+<div id="label"></div>
+
+<script type="module">
+  import van from "../js/van.js";
+  import { multiBrokerState } from "../js/broker.js";
+  import { SHADERS, byId, makeConfig, createShaderView } from "./shaders.js";
+
+  const host = document.getElementById("host");
+  const label = document.getElementById("label");
+
+  const view = createShaderView(host);
+
+  // Reactive synced state. `show` toggles visibility, `config` is a JSON string
+  // carrying { shader, speed, params, sizing }. The overlay only listens.
+  const s = multiBrokerState({ show: true, config: "" });
+  s.connect({
+    space: "bg",
+    password: location.hash.slice(1) || "demo",
+    ...Object.fromEntries(new URLSearchParams(location.search)),
+  });
+
+  // Show a default shader immediately, before any controller state arrives.
+  let cur = makeConfig(SHADERS[0].id);
+  view.update(cur);
+
+  // Config -> rebuild / update the mounted shader.
+  van.derive(() => {
+    const raw = s.config;
+    if (!raw) return;
+    let cfg;
+    try { cfg = JSON.parse(raw); } catch { return; }
+    cur = cfg;
+    view.update(cfg);
+    label.textContent = byId.get(cfg.shader)?.label || cfg.shader;
+  });
+
+  // Show / hide: fade the host and pause animation while hidden (saves GPU).
+  van.derive(() => {
+    const visible = s.show;
+    host.classList.toggle("hidden", !visible);
+    view.setSpeed(visible ? (cur?.speed || 0) : 0);
+  });
+
+  // While idle (no input), briefly reveal the shader name so you can confirm it.
+  document.addEventListener("mousemove", () => {
+    label.classList.add("show");
+    clearTimeout(window.__lt);
+    window.__lt = setTimeout(() => label.classList.remove("show"), 1500);
+  });
+</script>
+</body>
+</html>
