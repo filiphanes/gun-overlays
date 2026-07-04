@@ -44,7 +44,6 @@
 <div id="label"></div>
 
 <script type="module">
-  import van from "../js/van.js";
   import { multiBrokerState } from "../js/broker.js";
   import { SHADERS, byId, makeConfig, createShaderView } from "./shaders.js";
 
@@ -66,9 +65,9 @@
   let cur = makeConfig(SHADERS[0].id);
   view.update(cur);
 
-  // Config -> rebuild / update the mounted shader.
-  van.derive(() => {
-    const raw = s.config;
+  // Config -> rebuild / update the mounted shader. (subscribe, not van.derive,
+  // so this overlay carries no JS-framework dependency.)
+  s.subscribe("config", (raw) => {
     if (!raw) return;
     let cfg;
     try { cfg = JSON.parse(raw); } catch { return; }
@@ -78,17 +77,17 @@
   });
 
   // Show / hide: fade the host and pause animation while hidden (saves GPU).
-  van.derive(() => {
-    const visible = s.show;
+  s.subscribe("show", (visible) => {
     host.classList.toggle("hidden", !visible);
     view.setSpeed(visible ? (cur?.speed || 0) : 0);
   });
 
   // While idle (no input), briefly reveal the shader name so you can confirm it.
+  let labelTimer = 0;
   document.addEventListener("mousemove", () => {
     label.classList.add("show");
-    clearTimeout(window.__lt);
-    window.__lt = setTimeout(() => label.classList.remove("show"), 1500);
+    clearTimeout(labelTimer);
+    labelTimer = setTimeout(() => label.classList.remove("show"), 1500);
   });
 </script>
 </body>

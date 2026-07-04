@@ -8,8 +8,9 @@
 import van from "./van.js";
 
 const GLOBAL_SOURCES = {
-  // local gun first (matches static/js convention), then public CDN fallback
-  gun:  ["../js/gun.min.js", "https://cdn.jsdelivr.net/npm/gun/gun.js"],
+  // local gun first (same dir as broker.js), then public CDN fallback.
+  // Resolved against broker.js via import.meta.url so it works from pages at any depth.
+  gun:  [new URL("./gun.min.js", import.meta.url).href, "https://cdn.jsdelivr.net/npm/gun/gun.js"],
   mqtt: ["https://cdn.jsdelivr.net/npm/mqtt@5/dist/mqtt.min.js"],
 };
 const _loadedScripts = {};
@@ -97,6 +98,13 @@ export function multiBrokerState(init) {
   const states = {};
   for (const [k, v] of Object.entries(init)) states[k] = van.state(v);
   const brokers = [];
+  // Van-free subscriptions: subscribe(key, cb) fires cb once with the current
+  // value and again on every later change (local write or remote update), so
+  // thin clients (e.g. the overlay) can react without importing VanJS.
+  const subs = {};
+  const notify = (key, val) => {
+    for (const cb of (subs[key] || [])) { try { cb(val); } catch (e) { console.error("[broker] subscriber:", e); } }
+  };
   const self = { brokers };
 
   self.connect = async function connect(opts) {
@@ -104,7 +112,7 @@ export function multiBrokerState(init) {
       gun: "https://gun.filiphanes.sk/gun",
       mqtt: undefined, ws: undefined, broadcast: undefined, put: undefined,
       space: "demo", password: "demo", path: undefined,
-      update(k, v) { if (states[k]) states[k].val = v; },
+      update(k, v) { if (states[k]) { states[k].val = v; notify(k, v); } },
     };
     Object.assign(o, opts);
     o.path = o.path || `${o.space}/${o.password}`;
@@ -130,8 +138,18 @@ export function multiBrokerState(init) {
     Object.defineProperty(self, key, {
       enumerable: true,
       get() { return states[key].val; },
-      set(v) { states[key].val = v; send(key, v); },
+      set(v) { states[key].val = v; send(key, v); notify(key, v); },
     });
   }
+
+  // Subscribe to a key: cb fires once immediately (current value) and on every
+  // change thereafter. Returns an unsubscribe function. van.derive still works
+  // too — this is the dependency-free alternative for simple listeners.
+  self.subscribe = (key, cb) => {
+    (subs[key] ??= new Set()).add(cb);
+    cb(states[key].val);
+    return () => subs[key].delete(cb);
+  };
+
   return self;
 }

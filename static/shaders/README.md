@@ -9,14 +9,13 @@ shaders/
 ├─ shaders.js            # shared shader registry + params→uniforms + mount helper
 ├─ presets.js            # official per-shader presets (generated, see scripts/gen-presets.js)
 ├─ bg.html               # the OVERLAY: full-screen shader, listens for state
-└─ dashboard/
-   └─ index.html         # the CONTROLLER: pick/tweak shader, live preview, Show/Hide
+└─ index.html         # the CONTROLLER: pick/tweak shader, live preview, Show/Hide
 ```
 
 ## Run
 
 1. Start the static server (from the repo root): `python3 -m http.server 8080 -d static`
-2. Open the controller: <http://localhost:8080/shaders/dashboard/>
+2. Open the controller: <http://localhost:8080/shaders/>
 3. Open the overlay (other screen / OBS): <http://localhost:8080/shaders/bg.html>
 
 Both join broker room `bg/<password>` (password = URL hash, `demo` by default).
@@ -24,53 +23,94 @@ Override the transport with query params, e.g. `?gun=https://gun.filiphanes.sk/g
 `?ws=ws://localhost:8089/`, or `?broadcast=bg` (instant for two tabs on one machine).
 
 > **OBS note:** add `bg.html` as a **BrowserSource via URL** (not "Local file").
-> It loads the shader from `esm.sh` through ES modules, which requires http(s).
+> It uses ES modules, which must be served over http(s) — but the shader library
+> itself is now vendored locally, so it runs fully offline once loaded.
 
 ## How it works
 
-- `dashboard/index.html` is the source of truth. It serializes the whole config
+- `index.html` is the source of truth. It serializes the whole config
   `{ shader, speed, params, sizing }` to a JSON string and publishes it on the
   `config` broker key; visibility goes on the `show` key.
 - `bg.html` only listens. On a shader change it rebuilds the `ShaderMount`; on
   parameter changes it calls `setUniforms`; on hide it fades out and pauses the
   animation (`setSpeed(0)`) to save GPU.
 - Both pages share `shaders.js`, which imports `@paper-design/shaders@0.0.77`
-  straight from `esm.sh` (no build step) and holds the per-shader parameter
+  from a **locally vendored copy** (`vendor/@paper-design/shaders/0.0.77/`) —
+  no CDN, fully offline, no build step. It holds the per-shader parameter
   definitions, defaults, ranges, and the params→uniforms conversion.
 
 ## Features
 
-- **Shader + presets panel (column 1)** — the shader selector is a list with one
-  shader per row, and the official *Look* presets + *Your presets* sit right
-  below it as horizontally-scrolling thumbnail strips. Every tile uses the
-  rendered preview as its background with a white-on-black-shadow label, so you
-  pick by sight in one click. Thumbnails are rendered once per config, cached,
-  and generated lazily (IntersectionObserver) + one at a time (stays under the
-  browser's WebGL context limit).
+- **Shader + presets panel (column 1)** — the official *Look* presets + *Your
+  presets* sit as 4-wide 16:9 thumbnail grids. Every tile uses the rendered
+  preview as its background with a white-on-black-shadow label, so you pick by
+  sight in one click. Thumbnails are rendered once per config, cached, and
+  generated lazily (IntersectionObserver) + one at a time (stays under the
+  browser's WebGL context limit). Shaders without official presets (the image
+  filters) still show a synthetic *Default* tile so they're selectable.
+- **Image filters** — `water`, `flutedGlass`, `imageDithering`, `halftoneDots`,
+  `halftoneCmyk`, `paperTexture` filter an image loaded from a URL. The image
+  URL is a normal parameter (with a Load button + thumbnail); any host that
+  sends CORS headers works. Like any other look, the result is **saveable as a
+  preset** (the URL is stored with the preset).
+- **Speed + actions** — a full-width speed slider (0–10) sits above a single
+  row of action buttons: **Reset** (defaults), **🎲 Random** (randomize the
+  current shader's parameters — colors get a vibrant random hue, the image URL
+  is left untouched), **Hide**, **Show**.
 - **Presets** — *Look* shows the official per-shader presets from
   `shaders.paper.design` (90 of them, see `presets.js`) as click-to-apply buttons
   that highlight the active one. *Your presets* are global (any shader), saved to
   `localStorage` as buttons with a one-click delete — type a name and hit
   *Save current*.
+- **Transparent checkerboard preview** — the live preview shows a classic
+  transparency checkerboard behind the shader, so shaders/looks with a
+  transparent background composite visibly.
 - **Hideable preview** — the dashboard's live preview can be turned off (button
   on the preview caption); it disposes the WebGL context to save battery and
   remembers the choice. The overlay is unaffected.
 - Every parameter auto-gets a slider / color picker (with alpha) / color-stop
-  list / dropdown / checkbox from its `type` — no per-shader UI work.
+  list / dropdown / checkbox / image-URL field from its `type` — no per-shader
+  UI work.
 
-## Included shaders (20)
+## Included shaders (26)
 
-All animated background / pattern shaders that render without an input image:
+20 animated background / pattern shaders that render without an input image:
 
 `meshGradient`, `smokeRing`, `neuroNoise`, `dotOrbit`, `dotGrid`, `simplexNoise`,
 `metaballs`, `perlinNoise`, `voronoi`, `waves`, `warp`, `godRays`, `spiral`,
 `swirl`, `dithering`, `grainGradient`, `pulsingBorder`, `colorPanels`,
 `staticMeshGradient`, `staticRadialGradient`.
 
-The image-filter shaders (`water`, `flutedGlass`, `halftoneDots`, `halftoneCmyk`,
-`imageDithering`, `liquidMetal`, `heatmap`, `gemSmoke`, `paperTexture`) need an
-input image and are intentionally omitted — add them to `SHADERS` in `shaders.js`
-(an `image` param + `u_image` uniform) if you want them.
+6 image-filter shaders that filter an image loaded from a URL:
+
+`water`, `flutedGlass`, `imageDithering`, `halftoneDots`, `halftoneCmyk`,
+`paperTexture`. (The library also ships `heatmap`, `liquidMetal`, `gemSmoke`,
+which need image *preprocessing* — not wired up here.)
+
+## Vendoring / updating `@paper-design/shaders`
+
+The library is vendored for fully offline use under
+`vendor/@paper-design/shaders/0.0.77/` (the package's `dist/` ESM build, which
+has only relative imports — no bundler needed). **The vendored copy is trimmed**
+to only what this module uses: the `.d.ts` / `.js.map` build artifacts and the
+three unused image-preprocessing shaders (`heatmap`, `liquid-metal`, `gem-smoke`)
+are removed, and `index.js` is a minimal barrel re-exporting only the symbols
+`shaders.js` imports. To update it:
+
+```bash
+npm pack @paper-design/shaders@<version>          # download the tarball
+tar xzf paper-design-shaders-<version>.tgz        # extracts package/dist
+rm -rf static/shaders/vendor/@paper-design/shaders/<old-version>
+cp -r package/dist static/shaders/vendor/@paper-design/shaders/<version>
+# then bump the import path in shaders.js to match
+# …then re-apply the trim:
+cd static/shaders/vendor/@paper-design/shaders/<version>
+find . -name '*.d.ts' -delete                     # TS declarations: unused at runtime
+find . -name '*.js.map' -delete                    # source maps: optional, drop to save space
+rm -f shaders/heatmap.js shaders/liquid-metal.js shaders/gem-smoke.js
+rm -f empty-pixel.js shader-color-spaces.js types.js
+# now hand-edit index.js to drop imports/exports of the removed modules
+```
 
 ## Updating the official presets
 
@@ -93,9 +133,13 @@ Edit `SHADERS` in `shaders.js`. Each entry is:
 ```js
 { id, label, base: "object" | "pattern", sizing: {…overrides}, noise: bool, speed,
   frag: <fragmentShader>,
+  // optional, for image filters:
+  image: true, mipmaps: ["u_image"],
   params: [ N(key,label,min,max,step,def), C(key,label,def), CA(key,label,arr,max),
-            S(key,label,"EnumName",def), B(key,label,def), I(key,label,min,max,def) ] }
+            S(key,label,"EnumName",def), B(key,label,def), I(key,label,min,max,def),
+            IMG(defaultUrl) ] }
 ```
 
 The controller auto-generates a slider / color picker / color list / dropdown /
-checkbox for each param from its `type`, so no UI work is needed.
+checkbox / image-URL field for each param from its `type`, so no UI work is
+needed.

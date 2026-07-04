@@ -1,13 +1,14 @@
 // Shared registry + helpers for the Paper Shaders background module.
 //
-// Imports the vanilla `@paper-design/shaders` build straight from a CDN
-// (esm.sh), so this whole module stays build-free. Both bg.html (the overlay)
-// and dashboard/index.html (the controller) import from here.
+// Imports the vanilla `@paper-design/shaders` build from a locally vendored
+// copy (vendor/@paper-design/shaders/0.0.77), so the whole module is fully
+// offline / build-free. Both bg.html (the overlay) and dashboard/index.html
+// (the controller) import from here.
 //
-// Covers every self-contained background / pattern shader in the library.
-// Image-filter shaders (water, fluted-glass, halftone-*, image-dithering,
-// liquid-metal, heatmap, gem-smoke, paper-texture) need an input image and are
-// intentionally left out — they don't make sense as a pure generated bg.
+// Covers every self-contained background / pattern shader in the library,
+// PLUS the image-filter shaders (water, fluted-glass, halftone-dots,
+// halftone-cmyk, image-dithering, paper-texture) which filter an image loaded
+// from a URL.
 
 import {
   ShaderMount,
@@ -36,13 +37,25 @@ import {
   colorPanelsFragmentShader,
   staticMeshGradientFragmentShader,
   staticRadialGradientFragmentShader,
+  // image-filter shaders
+  waterFragmentShader,
+  flutedGlassFragmentShader,
+  imageDitheringFragmentShader,
+  halftoneDotsFragmentShader,
+  halftoneCmykFragmentShader,
+  paperTextureFragmentShader,
   DotGridShapes,
   DitheringShapes,
   DitheringTypes,
   GrainGradientShapes,
   WarpPatterns,
   PulsingBorderAspectRatios,
-} from "https://esm.sh/@paper-design/shaders@0.0.77";
+  GlassDistortionShapes,
+  GlassGridShapes,
+  HalftoneDotsTypes,
+  HalftoneDotsGrids,
+  HalftoneCmykTypes,
+} from "./vendor/@paper-design/shaders/0.0.77/index.js";
 
 // Re-export the enum objects so the controller can build <select> options.
 export const ENUMS = {
@@ -52,8 +65,18 @@ export const ENUMS = {
   GrainGradientShapes,
   WarpPatterns,
   PulsingBorderAspectRatios,
+  GlassDistortionShapes,
+  GlassGridShapes,
+  HalftoneDotsTypes,
+  HalftoneDotsGrids,
+  HalftoneCmykTypes,
 };
 export { ShaderFitOptions };
+
+// A CORS-friendly default image so image filters have something to show out of
+// the box. Any URL works as long as the host sends CORS headers (WebGL needs
+// crossOrigin="anonymous" textures).
+export const DEFAULT_IMAGE_URL = "https://picsum.photos/seed/paper-shaders/720/405";
 
 // ---- param spec builders (kept tiny so the registry reads top-to-bottom) ----
 const N = (key, label, min, max, step, def, extra = {}) =>
@@ -63,13 +86,17 @@ const C = (key, label, def) => ({ key, label, type: "color", def });
 const CA = (key, label, def, max) => ({ key, label, type: "colors", def, max });
 const B = (key, label, def) => ({ key, label, type: "boolean", def });
 const S = (key, label, enumName, def) => ({ key, label, type: "select", enum: enumName, def });
+// image URL param: rendered as a text input + Load button; uniform u_image is an HTMLImageElement
+const IMG = (def = DEFAULT_IMAGE_URL) => ({ key: "image", label: "Image URL", type: "image", def });
 
 // base: "object" (defaultObjectSizing, fit:contain) | "pattern" (defaultPatternSizing, fit:none)
 // sizing: per-shader overrides merged onto the base sizing defaults
 // noise:  whether the shader needs the shared noise texture
 // speed:  default animation speed (0 = static)
 // params: ordered list of controllable params (defaults baked into each spec)
-export const SHADERS = [
+
+// 20 animated background / pattern shaders — self-contained, no input image.
+const PATTERN_SHADERS = [
   {
     id: "meshGradient", label: "Mesh Gradient", base: "object", sizing: {}, noise: false, speed: 1,
     frag: meshGradientFragmentShader,
@@ -124,7 +151,7 @@ export const SHADERS = [
       C("colorBack", "Background", "#000000"),
       C("colorFill", "Fill", "#ffffff"),
       C("colorStroke", "Stroke", "#ffaa00"),
-      N("size", "Dot size", 0, 50, 0.5, 2),
+      N("size", "Dot size", 0, 50, 0.5, 2, { uniform: "dotSize" }),
       N("gapX", "Gap X", 0, 200, 1, 32),
       N("gapY", "Gap Y", 0, 200, 1, 32),
       N("strokeWidth", "Stroke width", 0, 10, 0.1, 0),
@@ -349,8 +376,144 @@ export const SHADERS = [
       N("grainOverlay", "Grain overlay", 0, 1, 0.01, 0),
     ],
   },
+
 ];
 
+// 6 image-filter shaders — filter an image loaded from a URL. `image: true`
+// marks them; the first param is always IMG() (the URL). `mipmaps: ["u_image"]`
+// tells ShaderMount to generate mipmaps for the image.
+const IMAGE_SHADERS = [
+  {
+    id: "water", label: "Water (image)", base: "object", sizing: { scale: 0.8 }, noise: false, image: true,
+    mipmaps: ["u_image"], speed: 1,
+    frag: waterFragmentShader,
+    params: [
+      IMG(),
+      C("colorBack", "Background", "#909090"),
+      C("colorHighlight", "Highlight", "#ffffff"),
+      N("highlights", "Highlights", 0, 1, 0.01, 0.07),
+      N("layering", "Layering", 0, 1, 0.01, 0.5),
+      N("waves", "Waves", 0, 1, 0.01, 0.3),
+      N("edges", "Edges", 0, 1, 0.01, 0.8),
+      N("caustic", "Caustic", 0, 1, 0.01, 0.1),
+      N("size", "Size", 0, 5, 0.01, 1),
+    ],
+  },
+  {
+    id: "flutedGlass", label: "Fluted Glass (image)", base: "object", sizing: {}, noise: false, image: true,
+    mipmaps: ["u_image"], speed: 0,
+    frag: flutedGlassFragmentShader,
+    params: [
+      IMG(),
+      C("colorBack", "Background", "#00000000"),
+      C("colorShadow", "Shadow", "#000000"),
+      C("colorHighlight", "Highlight", "#ffffff"),
+      N("shadows", "Shadows", 0, 1, 0.01, 0.25),
+      N("size", "Size", 0, 5, 0.01, 0.5),
+      N("angle", "Angle", 0, 360, 1, 0),
+      N("distortion", "Distortion", 0, 1, 0.01, 0.5),
+      S("distortionShape", "Distortion shape", "GlassDistortionShapes", "prism"),
+      N("highlights", "Highlights", 0, 1, 0.01, 0.1),
+      S("shape", "Grid shape", "GlassGridShapes", "lines"),
+      N("shift", "Shift", 0, 1, 0.01, 0),
+      N("blur", "Blur", 0, 1, 0.01, 0),
+      N("edges", "Edges", 0, 1, 0.01, 0.25),
+      N("stretch", "Stretch", 0, 1, 0.01, 0),
+      N("marginLeft", "Margin left", 0, 1, 0.005, 0),
+      N("marginRight", "Margin right", 0, 1, 0.005, 0),
+      N("marginTop", "Margin top", 0, 1, 0.005, 0),
+      N("marginBottom", "Margin bottom", 0, 1, 0.005, 0),
+      N("grainMixer", "Grain mixer", 0, 1, 0.01, 0),
+      N("grainOverlay", "Grain overlay", 0, 1, 0.01, 0),
+    ],
+  },
+  {
+    id: "imageDithering", label: "Image Dithering", base: "object", sizing: {}, noise: false, image: true, speed: 0,
+    frag: imageDitheringFragmentShader,
+    params: [
+      IMG(),
+      C("colorFront", "Front", "#94ffaf"),
+      C("colorBack", "Background", "#000c38"),
+      C("colorHighlight", "Highlight", "#eaff94"),
+      S("type", "Type", "DitheringTypes", "8x8"),
+      { key: "size", label: "Size", type: "number", min: 1, max: 20, step: 1, def: 2, uniform: "pxSize" },
+      I("colorSteps", "Color steps", 1, 8, 2),
+      B("originalColors", "Original colors", false),
+      B("inverted", "Inverted", false),
+    ],
+  },
+  {
+    id: "halftoneDots", label: "Halftone Dots (image)", base: "object", sizing: {}, noise: false, image: true, speed: 0,
+    frag: halftoneDotsFragmentShader,
+    params: [
+      IMG(),
+      C("colorFront", "Front", "#2b2b2b"),
+      C("colorBack", "Background", "#f2f1e8"),
+      N("size", "Size", 0, 5, 0.01, 0.5),
+      N("radius", "Radius", 0, 4, 0.01, 1.25),
+      N("contrast", "Contrast", 0, 2, 0.01, 0.4),
+      B("originalColors", "Original colors", false),
+      B("inverted", "Inverted", false),
+      N("grainMixer", "Grain mixer", 0, 1, 0.01, 0.2),
+      N("grainOverlay", "Grain overlay", 0, 1, 0.01, 0.2),
+      N("grainSize", "Grain size", 0, 1, 0.01, 0.5),
+      S("grid", "Grid", "HalftoneDotsGrids", "hex"),
+      S("type", "Type", "HalftoneDotsTypes", "gooey"),
+    ],
+  },
+  {
+    id: "halftoneCmyk", label: "Halftone CMYK (image)", base: "object", sizing: {}, noise: true, image: true, speed: 0,
+    frag: halftoneCmykFragmentShader,
+    params: [
+      IMG(),
+      C("colorBack", "Background", "#fbfaf5"),
+      C("colorC", "Cyan", "#00b4ff"),
+      C("colorM", "Magenta", "#fc519f"),
+      C("colorY", "Yellow", "#ffd800"),
+      C("colorK", "Black", "#231f20"),
+      N("size", "Size", 0, 5, 0.01, 0.2),
+      N("contrast", "Contrast", 0, 3, 0.01, 1),
+      N("softness", "Softness", 0, 1, 0.01, 1),
+      N("grainSize", "Grain size", 0, 1, 0.01, 0.5),
+      N("grainMixer", "Grain mixer", 0, 1, 0.01, 0),
+      N("grainOverlay", "Grain overlay", 0, 1, 0.01, 0),
+      N("gridNoise", "Grid noise", 0, 1, 0.01, 0.2),
+      N("floodC", "Flood C", 0, 1, 0.01, 0.15),
+      N("floodM", "Flood M", 0, 1, 0.01, 0),
+      N("floodY", "Flood Y", 0, 1, 0.01, 0),
+      N("floodK", "Flood K", 0, 1, 0.01, 0),
+      N("gainC", "Gain C", -1, 1, 0.01, 0.3),
+      N("gainM", "Gain M", -1, 1, 0.01, 0),
+      N("gainY", "Gain Y", -1, 1, 0.01, 0.2),
+      N("gainK", "Gain K", -1, 1, 0.01, 0),
+      S("type", "Type", "HalftoneCmykTypes", "ink"),
+    ],
+  },
+  {
+    id: "paperTexture", label: "Paper Texture (image)", base: "object", sizing: { scale: 0.6 }, noise: true, image: true,
+    mipmaps: ["u_image"], speed: 0,
+    frag: paperTextureFragmentShader,
+    params: [
+      IMG(),
+      C("colorFront", "Front", "#9fadbc"),
+      C("colorBack", "Background", "#ffffff"),
+      N("contrast", "Contrast", 0, 1, 0.01, 0.3),
+      N("roughness", "Roughness", 0, 1, 0.01, 0.4),
+      N("fiber", "Fiber", 0, 1, 0.01, 0.3),
+      N("fiberSize", "Fiber size", 0, 1, 0.01, 0.2),
+      N("crumples", "Crumples", 0, 1, 0.01, 0.3),
+      N("crumpleSize", "Crumple size", 0, 1, 0.01, 0.35),
+      N("folds", "Folds", 0, 1, 0.01, 0.65),
+      I("foldCount", "Fold count", 1, 20, 5),
+      N("fade", "Fade", 0, 1, 0.01, 0),
+      N("drops", "Drops", 0, 1, 0.01, 0.2),
+      N("seed", "Seed", 0, 20, 0.01, 5.8),
+    ],
+  },
+];
+
+// All 26 shaders — patterns first, then image filters (order = dashboard listing).
+export const SHADERS = [...PATTERN_SHADERS, ...IMAGE_SHADERS];
 export const SHADER_LIST = SHADERS;
 export const byId = new Map(SHADERS.map((s) => [s.id, s]));
 
@@ -394,6 +557,10 @@ export function uniformsFor(def, params, sizing) {
     } else if (spec.type === "select") {
       const map = ENUMS[spec.enum];
       u["u_" + spec.key] = map[v] ?? 0;
+    } else if (spec.type === "image") {
+      // u_image is an HTMLImageElement (loaded async via ensureImage); skipped if not yet loaded
+      const img = imageFor(v);
+      if (img) u.u_image = img;
     } else {
       // number / boolean -> u_<uniformName> (defaults to the param key)
       u["u_" + (spec.uniform || spec.key)] = v;
@@ -420,6 +587,28 @@ export function ensureNoise() {
   return _noiseReady;
 }
 
+// ---- image loading for image-filter shaders ----
+// WebGL needs crossOrigin="anonymous" textures, so the host must send CORS
+// headers. We cache one HTMLImageElement per URL (shared by preview, overlay,
+// and every thumbnail of that config).
+const _images = new Map(); // url -> { img, ready }
+export function imageFor(url) {
+  const e = _images.get(url);
+  return e && e.img.complete && e.img.naturalWidth ? e.img : null;
+}
+export function ensureImage(url) {
+  if (!url) return Promise.resolve();
+  let e = _images.get(url);
+  if (!e) {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = url;
+    e = { img, ready: new Promise((res) => { img.onload = res; img.onerror = res; }) };
+    _images.set(url, e);
+  }
+  return e.ready;
+}
+
 // ---- a self-contained shader view: mounts/rebuilds/updates on config changes ----
 // Used by both the overlay (full-screen) and the controller (live preview).
 // Force-release a WebGL context so the browser's active-context count drops
@@ -432,6 +621,9 @@ function loseCanvasContext(canvas) {
     if (ext) ext.loseContext();
   } catch { /* ignore */ }
 }
+
+// Cap the on-screen render buffer so huge viewports don't blow past GPU limits.
+const MAX_RENDER_PIXELS = 1920 * 1080 * 4; // ~8.3 MP
 
 export function createShaderView(host) {
   let mount = null;
@@ -446,16 +638,28 @@ export function createShaderView(host) {
 
     if (cfg.shader !== shaderId) {
       if (def.noise) { try { await ensureNoise(); } catch { /* ignore */ } }
+      if (def.image) { try { await ensureImage(cfg.params.image); } catch { /* ignore */ } }
       if (t !== token) return; // a newer update superseded us while awaiting
       if (mount) { loseCanvasContext(host.querySelector("canvas")); mount.dispose(); }
       shaderId = cfg.shader;
       try {
-        mount = new ShaderMount(host, def.frag, uniformsFor(def, cfg.params, cfg.sizing), {}, cfg.speed || 0, 0);
+        // ShaderMount(parent, frag, uniforms, glAttrs, speed, startFrame, minPixelRatio, maxPixelCount, mipmaps)
+        mount = new ShaderMount(
+          host, def.frag, uniformsFor(def, cfg.params, cfg.sizing),
+          /* glAttrs       */ {},
+          /* speed         */ cfg.speed || 0,
+          /* startFrame    */ 0,
+          /* minPixelRatio */ 2,
+          /* maxPixelCount */ MAX_RENDER_PIXELS,
+          /* mipmaps       */ def.mipmaps || [],
+        );
       } catch (e) {
         console.error("[shader] mount failed:", e);
         mount = null;
       }
     } else if (mount) {
+      if (def.image && cfg.params.image) { try { await ensureImage(cfg.params.image); } catch { /* ignore */ } }
+      if (t !== token) return;
       try { mount.setUniforms(uniformsFor(def, cfg.params, cfg.sizing)); } catch (e) { console.error(e); }
     }
     if (t !== token) return;
@@ -605,7 +809,7 @@ function thumbRenderer() {
   const posBuf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
-  _tg = { canvas, gl, vs, compile, programs: new Map(), posLoc: new Map(), posBuf, noiseTex: gl.createTexture(), noiseUploaded: false };
+  _tg = { canvas, gl, vs, compile, programs: new Map(), posLoc: new Map(), posBuf, noiseTex: gl.createTexture(), noiseUploaded: false, imageTextures: new Map() };
   return _tg;
 }
 
@@ -641,6 +845,31 @@ function uploadNoise(tg) {
   tg.noiseUploaded = true;
 }
 
+// Upload (and cache) a filter image as a GL texture; returns the texture or null.
+function imageTexture(tg, img, mipmap) {
+  if (!img || !img.complete || !img.naturalWidth) return null;
+  const gl = tg.gl;
+  const key = img.src + (mipmap ? "|m" : "");
+  let tex = tg.imageTextures.get(key);
+  if (tex) return tex;
+  tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  if (mipmap) {
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    gl.generateMipmap(gl.TEXTURE_2D);
+  } else {
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+  }
+  tg.imageTextures.set(key, tex);
+  return tex;
+}
+
 function setUniform(gl, loc, value) {
   if (Array.isArray(value)) {
     let flat, len;
@@ -658,6 +887,7 @@ export async function renderConfigThumbnail(config, { width = 256, height = 144,
   const def = byId.get(config?.shader);
   if (!def) return null;
   if (def.noise) { try { await ensureNoise(); } catch { /* ignore */ } }
+  if (def.image && config.params.image) { try { await ensureImage(config.params.image); } catch { /* ignore */ } }
   let tg;
   try { tg = thumbRenderer(); } catch (e) { console.warn("[thumbnail] no GL:", e.message); return null; }
   const prog = programFor(tg, def);
@@ -675,8 +905,18 @@ export async function renderConfigThumbnail(config, { width = 256, height = 144,
 
   const uniforms = uniformsFor(def, config.params, config.sizing);
   let needNoise = false;
+  let imageAspect = 1;
+  let imgTex = null;
   for (const [key, value] of Object.entries(uniforms)) {
-    if (value instanceof HTMLImageElement) { needNoise = true; continue; }
+    if (value instanceof HTMLImageElement) {
+      if (key === "u_image") {
+        imgTex = imageTexture(tg, value, def.mipmaps && def.mipmaps.includes("u_image"));
+        if (value.naturalWidth && value.naturalHeight) imageAspect = value.naturalWidth / value.naturalHeight;
+      } else {
+        needNoise = true; // u_noiseTexture
+      }
+      continue;
+    }
     const loc = gl.getUniformLocation(prog, key);
     if (loc) setUniform(gl, loc, value);
   }
@@ -685,13 +925,17 @@ export async function renderConfigThumbnail(config, { width = 256, height = 144,
     const loc = gl.getUniformLocation(prog, "u_noiseTexture");
     if (loc) { gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tg.noiseTex); gl.uniform1i(loc, 0); }
   }
+  if (imgTex) {
+    const loc = gl.getUniformLocation(prog, "u_image");
+    if (loc) { gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, imgTex); gl.uniform1i(loc, 1); }
+  }
 
   const u = (name) => gl.getUniformLocation(prog, name);
   let l;
   if ((l = u("u_time"))) gl.uniform1f(l, frame * 0.001);
   if ((l = u("u_pixelRatio"))) gl.uniform1f(l, 1);
   if ((l = u("u_resolution"))) gl.uniform2f(l, width, height);
-  if ((l = u("u_imageAspectRatio"))) gl.uniform1f(l, 1);
+  if ((l = u("u_imageAspectRatio"))) gl.uniform1f(l, imageAspect);
 
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT);
