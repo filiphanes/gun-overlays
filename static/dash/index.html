@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, shrink-to-fit=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>Dash · panel framework</title>
+
+<!--
+  Dash — a Golden Layout panel framework.
+  Each panel hosts an iframe that can load any dashboard / graphics page from
+  this project's modules (see config.js) or an arbitrary URL. Add panels
+  through a single searchable combobox in the toolbar: type to search existing
+  modules (click a result) or paste any URL (press Enter). The whole layout
+  (structure + each panel's URL) is auto-saved to localStorage and restored.
+
+  This file is just the shell — the shared chrome lives in
+    ../css/panel-frame.css   ../js/panel-frame.js
+  and this dashboard's catalog + default layout live in
+    ./config.js
+  Dependencies are vendored under ../vendor/ (jQuery + Golden Layout).
+-->
+
+<link rel="stylesheet" href="../vendor/golden-layout/1.5.9/css/goldenlayout-base.css" />
+<link rel="stylesheet" href="../vendor/golden-layout/1.5.9/css/goldenlayout-dark-theme.css" />
+<link rel="stylesheet" href="../css/panel-frame.css" />
+</head>
+<body>
+
+<header class="toolbar">
+  <span class="brand">◼ Dash</span>
+
+  <div class="combo" id="addCombo">
+    <input id="addInput" type="text" autocomplete="off" spellcheck="false"
+           placeholder="Search module (click result) or paste URL + Enter" />
+    <button id="addBtn" title="Add panel (Enter)">＋ Add</button>
+    <ul id="addResults" class="combo-results" hidden></ul>
+  </div>
+
+  <span class="spacer"></span>
+
+  <button id="exportBtn"  class="icon" title="Export layout as JSON file">⤓</button>
+  <button id="importBtn"  class="icon" title="Import layout from JSON file">⤴</button>
+  <input id="importFile" type="file" accept="application/json,.json" hidden />
+  <button id="resetBtn"   class="icon" title="Reset to the default layout">↺</button>
+  <span id="status" class="status">ready</span>
+</header>
+
+<div id="layout"></div>
+<pre id="fatal"></pre>
+
+<!-- jQuery (required by Golden Layout 1.x) + Golden Layout 1.5.9 — both vendored -->
+<script src="../vendor/jquery/3.7.1/jquery.min.js"></script>
+<script src="../vendor/golden-layout/1.5.9/goldenlayout.min.js"></script>
+
+<!-- This dashboard's catalog + default layout, then the shared framework -->
+<script src="../js/golden-layout-default.js"></script>
+<script src="./config.js"></script>
+<script src="../js/panel-frame.js"></script>
+
+</body>
+</html>

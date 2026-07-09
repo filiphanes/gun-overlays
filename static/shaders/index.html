@@ -2,272 +2,65 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>BG · Shader Dashboard</title>
-<style>
-  :root {
-    --bg: #1c1c1f;
-    --panel: #26262b;
-    --panel2: #2f2f36;
-    --line: #3a3a42;
-    --txt: #e6e6ea;
-    --mut: #9a9aa6;
-    --acc: #4f9bff;
-    --ok: #2ea36b;
-    --warn: #c7502e;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; }
-  body {
-    background: var(--bg);
-    color: var(--txt);
-    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  button {
-    font: inherit; color: var(--txt); cursor: pointer;
-    background: var(--panel2); border: 1px solid var(--line);
-    padding: 6px 12px; border-radius: 7px;
-  }
-  button:hover { border-color: var(--mut); }
-  button.primary { background: var(--ok); border-color: var(--ok); color: #fff; }
-  button.active { outline: 2px solid var(--acc); outline-offset: 1px; }
-  button.mini { padding: 2px 8px; border-radius: 5px; }
-  button.mini.rm { color: var(--warn); }
-  button:disabled { opacity: 0.4; cursor: default; }
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, shrink-to-fit=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>Shaders · panel dashboard</title>
 
-  main {
-    display: grid;
-    grid-template-columns: minmax(320px, 1fr) minmax(340px, 1.25fr) minmax(250px, 0.85fr);
-    gap: 16px;
-    padding: 16px;
-    align-items: start;
-  }
-  @media (max-width: 1180px) { main { grid-template-columns: 1fr 1fr; } }
-  @media (max-width: 760px) {
-    main { grid-template-columns: 1fr; padding: 10px; gap: 12px; }
-    .card { padding: 10px 11px; margin-bottom: 12px; }
-    .preview-cap { font-size: 12px; }
-    .toprow { gap: 8px; }
-    .field { min-width: 0; }
-    .preview-wrap.pinned { width: min(52vw, 220px); bottom: 10px; right: 10px; }
-  }
+<!--
+  Shaders — a Golden Layout panel dashboard for the shader background,
+  structured just like ../dash/index.html. Each panel hosts an iframe that
+  loads one of the shader split pages (preview / presets / controls / full);
+  those pages already sync state between themselves over the broker
+  (room `bg/<password>`), so this dashboard just arranges them and lets you
+  drag / resize / add more. Append a #hash to share a broker session across
+  every panel (config.js carries it over via propagateHash).
 
-  .cap-right { display: flex; gap: 8px; align-items: center; }
-  .footer-hint { margin-top: 12px; }
+  This file is just the shell — the shared chrome lives in
+    ../css/panel-frame.css   ../js/panel-frame.js
+  and this dashboard's catalog + default layout live in
+    ./config.js
+  Dependencies are vendored under ../vendor/ (jQuery + Golden Layout).
+-->
 
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 12px 14px;
-    margin-bottom: 14px;
-  }
-  .card > h3, .card > summary {
-    margin: 0 0 10px;
-    font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--mut);
-  }
-  details.card > summary { cursor: pointer; list-style: none; margin-bottom: 0; }
-  details.card > summary::-webkit-details-marker { display: none; }
-  details.card[open] > .grid { margin-top: 10px; }
-
-  .toprow { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
-  .field { display: flex; flex-direction: column; gap: 4px; }
-  .field label { font-size: 12px; color: var(--mut); }
-
-  /* speed slider: full panel width; action buttons sit in a single row beneath it */
-  .speed-row { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
-  .speed-row label { font-size: 12px; color: var(--mut); }
-  .speed-row input { width: 100%; }
-  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
-  .btn-row button { flex: 1 1 auto; min-width: 60px; }
-  select, input[type="text"] {
-    background: var(--bg); color: var(--txt);
-    border: 1px solid var(--line); border-radius: 7px;
-    padding: 7px 9px; min-width: 180px;
-  }
-  select:focus, input[type="text"]:focus { outline: none; border-color: var(--acc); }
-
-  /* thumbnail tiles: shader rows + preset/user strips */
-  .subhead { font-size: 12px; color: var(--mut); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 6px; }
-  .subhead:not(:first-child) { margin-top: 14px; }
-  .thumb-btn {
-    position: relative; display: block; flex: none;
-    border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
-    background-color: #000; background-size: cover; background-position: center;
-    cursor: pointer; padding: 0; color: #fff;
-  }
-  .thumb-btn:hover { border-color: var(--acc); }
-  .thumb-btn.active { outline: 2px solid var(--acc); outline-offset: 1px; border-color: var(--acc); }
-  .thumb-btn .tlabel {
-    position: absolute; left: 7px; right: 7px; bottom: 5px;
-    font-size: 12px; font-weight: 600; color: #fff;
-    text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,.95);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
-  }
-  .thumb-btn .del {
-    position: absolute; top: 4px; right: 4px; width: 18px; height: 18px;
-    line-height: 15px; padding: 0; border-radius: 50%;
-    background: rgba(0,0,0,.55); color: #fff; font-size: 13px; border: 1px solid var(--line);
-  }
-  .thumb-btn .del:hover { background: var(--warn); border-color: var(--warn); }
-
-  /* looks: one grid per shader (preserves grouping), 4 tiles wide at 16:9 */
-  .looks-list { display: flex; flex-direction: column; gap: 12px; padding-right: 2px; }
-
-  /* preset / user + looks strips: a wrapping 4-wide grid of 16:9 tiles */
-  .thumb-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-  .thumb-strip .thumb-btn { width: 100%; aspect-ratio: 16 / 9; height: auto; }
-  .thumb-strip .empty { font-size: 12px; color: var(--mut); padding: 6px 2px; grid-column: 1 / -1; }
-  .save-row { display: flex; gap: 8px; margin: 10px 0; }
-  .save-row input { flex: 1; min-width: 0; }
-
-  /* parameter controls */
-  .ctrl { padding: 7px 0; }
-  .ctrl .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
-  .ctrl .head label { color: var(--txt); }
-  .ctrl .val, .count, .hex { color: var(--mut); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
-  input[type="range"] {
-    -webkit-appearance: none; appearance: none;
-    width: 100%; height: 4px; background: var(--line); border-radius: 4px; outline: none;
-  }
-  input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
-    background: var(--acc); cursor: pointer; border: 2px solid var(--bg);
-  }
-  input[type="range"]::-moz-range-thumb {
-    width: 14px; height: 14px; border-radius: 50%; background: var(--acc);
-    cursor: pointer; border: 2px solid var(--bg);
-  }
-  input[type="range"].alpha { width: 90px; }
-  input[type="color"] {
-    -webkit-appearance: none; appearance: none;
-    width: 34px; height: 26px; padding: 0; border: 1px solid var(--line);
-    border-radius: 6px; background: none; cursor: pointer;
-  }
-  input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
-  input[type="color"]::-webkit-color-swatch { border: none; border-radius: 5px; }
-  .colorinp { display: flex; align-items: center; gap: 8px; flex: 1; }
-  .colorinp .hex { min-width: 78px; }
-  .row.color { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
-  .ctrl.check label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  .ctrl.check input { width: 16px; height: 16px; }
-  .colorlist { display: flex; flex-direction: column; gap: 2px; }
-
-  /* dot-less radio groups (enum params + Fit): pill buttons, checked = accent fill */
-  .radio-group { display: flex; flex-wrap: wrap; gap: 6px; }
-  .radio-opt { position: relative; display: inline-flex; }
-  .radio-opt input[type="radio"] {
-    position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; /* hide the dot */
-  }
-  .radio-opt span {
-    display: inline-block; padding: 6px 12px; border-radius: 7px; cursor: pointer;
-    background: var(--panel2); border: 1px solid var(--line); color: var(--txt);
-    font-size: 13px; white-space: nowrap; user-select: none;
-  }
-  .radio-opt:hover span { border-color: var(--mut); }
-  .radio-opt input[type="radio"]:focus-visible + span { outline: 2px solid var(--acc); outline-offset: 1px; }
-  .radio-opt input[type="radio"]:checked + span { background: var(--acc); border-color: var(--acc); color: #fff; }
-
-  /* image URL control (image-filter shaders) */
-  .ctrl.image .imageinp { display: flex; gap: 8px; align-items: center; }
-  .ctrl.image input[type="text"] { flex: 1; min-width: 0; }
-  .ctrl.image .thumb { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; border: 1px solid var(--line); flex: none; background: #000; }
-  .ctrl.image .hint-mini { font-size: 11px; color: var(--mut); margin-top: 4px; }
-
-  /* preview */
-  .preview-wrap { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
-    /* classic transparent checkerboard so shaders with a transparent background composite visibly */
-    background-color: #fff;
-    background-image:
-      linear-gradient(45deg, #c8c8d0 25%, transparent 25%),
-      linear-gradient(-45deg, #c8c8d0 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, #c8c8d0 75%),
-      linear-gradient(-45deg, transparent 75%, #c8c8d0 75%);
-    background-size: 22px 22px;
-    background-position: 0 0, 0 11px, 11px -11px, -11px 0;
-  }
-  #preview { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .preview-wrap.pinned {
-    position: fixed; right: 14px; bottom: 14px;
-    width: min(40vw, 260px); aspect-ratio: 16 / 9; z-index: 200;
-    box-shadow: 0 10px 30px rgba(0,0,0,.55); border-color: var(--acc);
-  }
-  #pinBtn.active { outline: 2px solid var(--acc); outline-offset: 1px; }
-  .preview-wrap.off::after {
-    content: "Preview off — click “Preview: on”"; position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    color: var(--mut); font-size: 13px; background: #000;
-  }
-  .preview-cap { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 0 14px; flex-wrap: wrap; }
-  #shaderName { font-weight: 600; }
-  .hint { color: var(--mut); font-size: 12px; }
-  a { color: var(--acc); }
-  #previewToggle.off { color: var(--warn); border-color: var(--warn); }
-</style>
+<link rel="stylesheet" href="../vendor/golden-layout/1.5.9/css/goldenlayout-base.css" />
+<link rel="stylesheet" href="../vendor/golden-layout/1.5.9/css/goldenlayout-dark-theme.css" />
+<link rel="stylesheet" href="../css/panel-frame.css" />
 </head>
 <body>
 
-<main>
-  <!-- Column 1: preview + visibility + presets -->
-  <section class="col">
-    <div class="preview-wrap" id="previewWrap"><div id="preview"></div></div>
-    <div class="preview-cap">
-      <span id="shaderName">—</span>
-      <div class="cap-right">
-        <span class="hint">overlay: <a id="overlayLink" target="_blank" href="/shaders/bg.html">bg.html</a></span>
-        <button id="pinBtn" class="mini" title="Pin preview — keep it visible while scrolling">📌</button>
-        <button id="previewToggle" class="mini" title="Pause + drop the preview WebGL context to save battery">Preview: on</button>
-      </div>
-    </div>
+<header class="toolbar">
+  <span class="brand">◆ Shaders</span>
 
-    <div class="card">
-      <div class="subhead">Presets</div>
-      <div class="save-row">
-        <input id="presetName" type="text" placeholder="Save current look as…" maxlength="40" />
-        <button id="presetSave">Save</button>
-      </div>
-      <div id="presetStrip" class="thumb-strip"></div>
-      <div class="subhead">Looks</div>
-      <div id="looksList" class="looks-list"></div>
-    </div>
-    <p class="hint footer-hint">
-      Open <a id="overlayLink2" target="_blank" href="./bg.html">bg.html</a> on the display / OBS
-      (as a URL, not a local file — it needs ES modules). State syncs over the broker; reconnects restore it.
-    </p>
-  </section>
+  <div class="combo" id="addCombo">
+    <input id="addInput" type="text" autocomplete="off" spellcheck="false"
+           placeholder="Search panel (click result) or paste URL + Enter" />
+    <button id="addBtn" title="Add panel (Enter)">＋ Add</button>
+    <ul id="addResults" class="combo-results" hidden></ul>
+  </div>
 
-  <!-- Column 2: speed/reset + appearance -->
-  <section class="col">
-    <div class="card">
-      <div class="btn-row">
-        <button id="resetBtn" title="Reset this shader to its defaults">Reset</button>
-        <button id="randomBtn" title="Randomize this shader’s parameters">🎲 Random</button>
-        <button id="hideBtn" title="Hide on the overlay">Hide</button>
-        <button id="showBtn" class="primary" title="Show on the overlay">Show</button>
-      </div>
-      <div class="speed-row">
-        <label for="speed">Speed: <span id="speedVal">1.00</span></label>
-        <input id="speed" type="range" min="0" max="15" step="0.01" />
-      </div>
-    </div>
+  <span class="spacer"></span>
 
-    <div class="card">
-      <h3>Appearance</h3>
-      <div id="params"></div>
-    </div>
-  </section>
+  <a class="hint-link" href="./controller.html" title="The original single-page controller">all-in-one</a>
+  <a class="hint-link" href="./full.html" target="_blank" title="Open the program overlay (OBS / display)">full ⤴</a>
+  <span class="sep"></span>
+  <button id="exportBtn"  class="icon" title="Export layout as JSON file">⤓</button>
+  <button id="importBtn"  class="icon" title="Import layout from JSON file">⤴</button>
+  <input id="importFile" type="file" accept="application/json,.json" hidden />
+  <button id="resetBtn"   class="icon" title="Reset to the default layout">↺</button>
+  <span id="status" class="status">ready</span>
+</header>
 
-  <!-- Column 3: transform (open) -->
-  <section class="col">
-    <details class="card" open>
-      <summary>Transform &amp; fit</summary>
-      <div id="transform" class="grid"></div>
-    </details>
-  </section>
-</main>
+<div id="layout"></div>
+<pre id="fatal"></pre>
 
-<script type="module" src="./dashboard.js"></script>
+<!-- jQuery (required by Golden Layout 1.x) + Golden Layout 1.5.9 — both vendored -->
+<script src="../vendor/jquery/3.7.1/jquery.min.js"></script>
+<script src="../vendor/golden-layout/1.5.9/goldenlayout.min.js"></script>
+
+<!-- This dashboard's catalog + default layout, then the shared framework -->
+<script src="../js/golden-layout-default.js"></script>
+<script src="./config.js"></script>
+<script src="../js/panel-frame.js"></script>
+
 </body>
 </html>

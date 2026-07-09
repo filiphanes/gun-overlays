@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Odpocet velky</title>
+    <script src="../script.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: black;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            text-align: center;
+            width: 100vw;
+        }
+        .main-timer {
+            font-size: 20vw;
+            font-weight: bold;
+            /* border: 2px solid #ccc; */
+            padding: 3vw;
+            margin-bottom: 2vw;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-timer">
+            <time until-src="/var/timer/live-start.txt" datetime="18:00:00">m:ss</time>
+        </div>
+    </div>
+</body>
+<script>
+    updateTimers();
+    setInterval(updateTimers, 1000);
+</script>
+</html>

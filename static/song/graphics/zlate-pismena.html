@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zlaté písmená na koži — Gold Lyric Overlay</title>
+
+<!-- Cinzel = engraved roman, reads as struck gold. Serif fallback keeps it offline-capable. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --gold-hi:#FFF6D0;   /* top highlight      */
+    --gold-lt:#FFE98A;   /* light band         */
+    --gold:   #F4C95A;   /* body               */
+    --gold-md:#C8902A;   /* mid shade          */
+    --gold-dk:#7A4F12;   /* edge shade         */
+    --fade:   1s;        /* show/hide fade     */
+  }
+
+  /* animatable brightness so the emboss shadows can stay constant while letters twinkle */
+  @property --b{
+    syntax:"<number>";
+    inherits:false;
+    initial-value:1;
+  }
+
+  html,body{
+      margin: 0;
+      height: 100%;
+      background:#160d04;          /* warm-dark fallback while the jpg loads */
+  }
+  body{
+    position:relative;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height:100vh; padding:6vh 6vw; box-sizing:border-box;
+    font-family:"Cinzel","Trajan Pro","Times New Roman",Georgia,serif;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    overflow:hidden;
+  }
+
+  /* alligator-leather backdrop — constant; only the letters fade */
+  body::before{
+    content:"";
+    position:fixed; inset:0; z-index:0;
+    background:#160d04 url("grey-lether-designecologist-15269525.jpg") center/cover no-repeat;
+    animation:drift 40s ease-in-out infinite alternate;
+  }
+  /* legibility scrim: warm overall lift + darken the edges so gold reads */
+  body::after{
+    content:"";
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(ellipse at center, rgba(0,0,0,0) 28%, rgba(0,0,0,.55) 100%),
+      rgba(18,10,2,.22);
+  }
+  @keyframes drift{
+    from{ transform:scale(1.04) translate3d(-.6%, -.4%, 0); }
+    to  { transform:scale(1.08) translate3d( .6%,  .4%, 0); }
+  }
+
+  /* the whole graphic fades in/out as one unit */
+  .stage{
+    position:relative; z-index:1;
+    text-align:center;
+    max-width:96vw;
+    opacity:0;
+    transition:opacity var(--fade) ease;
+    will-change:opacity;
+  }
+  .stage.show{ opacity:1; }
+
+  .line{
+    margin:0;
+    font-weight:600;
+    font-size:clamp(2.4rem, 4vw, 6.5rem);
+    line-height:1.14;
+    letter-spacing:.012em;
+    word-spacing:.06em;
+  }
+  .line + .line{ margin-top:.20em; }
+
+  /* each letter: gold foil DEBOSSED into the leather — sunken, lit from above */
+  .lt{
+    display:inline-block;
+    color:transparent;
+    /* recessed foil: muted satin gold (less directly lit than raised foil) */
+    background:linear-gradient(105deg,
+      #5c4210 0%,
+      #8a661e 20%,
+      #c2892c 42%,
+      #ecc65f 57%,
+      #cf9a33 72%,
+      #8a661e 87%,
+      #4f390d 100%);
+    background-size:240% 100%;
+    -webkit-background-clip:text;
+            background-clip:text;
+    /* NB: must use filter:drop-shadow, NOT text-shadow. With background-clip:text
+       + transparent fill, text-shadow paints ON TOP of the gold and buries it
+       (letters read black). drop-shadow composites UNDER the gold, so the foil
+       stays visible and only the rims read at the edges:
+         — dark overhang at the TOP lip (leather lip casting shadow down)
+         — faint light catching the BOTTOM lip of the recess
+         — a soft contact shadow settling the stamp into the leather          */
+    filter:
+      drop-shadow(.004em -.020em .020em rgba(0,0,0,.90))
+      drop-shadow(0 -.045em .045em rgba(0,0,0,.45))
+      drop-shadow(0 .028em .024em rgba(255,232,170,.42))
+      drop-shadow(0 .050em .070em rgba(0,0,0,.25))
+      brightness(var(--b,1));
+    animation:shimmer var(--dur,4.6s) ease-in-out infinite;
+    animation-delay:var(--del,0s);
+  }
+  /* register --b so it interpolates; animating just the number keeps the
+     drop-shadow stack intact (filter is one property — a raw brightness
+     keyframe would erase the rims). */
+  @property --b{ syntax:"<number>"; inherits:false; initial-value:1; }
+  @keyframes shimmer{
+    0%,100%{ background-position:0% 50%;   --b:.95;  }
+    50%    { background-position:100% 50%;  --b:1.12; }
+  }
+
+  /* accessibility: freeze the glitter + drift, keep the gold on the leather */
+  @media (prefers-reduced-motion: reduce){
+    .lt{ animation:none; background-position:50% 50%; }
+    body::before{ animation:none; transform:none; }
+  }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage" aria-live="polite"></div>
+
+<script src="../script.js"></script>
+<script>
+  // Live verse source = broker `verseText` (plain text the verses panel
+  // publishes). The ?ws=/?src= per-instance overrides from the lenverse
+  // file-WebSocket version are gone — routing is handled by the shared broker.
+  // ── render ────────────────────────────────────────────────────────────
+  const stage  = document.getElementById("stage");
+  let visible  = false;     // is the graphic currently faded in?
+  let pending  = null;      // payload queued behind a fade-out
+
+  // text → up to 2 trimmed lines
+  function buildLines(text){
+    return String(text).split(/\r?\n/).map(s => s.trim()).filter(Boolean).slice(0, 2);
+  }
+
+  // split a line into per-letter gold spans (spaces stay as plain text nodes)
+  function renderInto(host, lines){
+    host.replaceChildren();
+    for (const text of lines){
+      const p = document.createElement("p");
+      p.className = "line";
+      for (const ch of [...text]){
+        if (ch === " "){ p.appendChild(document.createTextNode(" ")); continue; }
+        const s = document.createElement("span");
+        s.className = "lt";
+        s.textContent = ch;
+        // randomize phase + duration so letters glitter independently
+        s.style.setProperty("--del", (Math.random() * -4).toFixed(2) + "s");
+        s.style.setProperty("--dur", (3.4 + Math.random() * 2.4).toFixed(2) + "s");
+        p.appendChild(s);
+      }
+      host.appendChild(p);
+    }
+  }
+
+  function show(lines){
+    renderInto(stage, lines);
+    stage.classList.remove("show");                       // guarantee hidden
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      stage.classList.add("show");                        // fade in (1s)
+      visible = true;
+    }));
+  }
+
+  function hide(){
+    stage.classList.remove("show");                       // fade out (1s)
+    visible = false;
+  }
+
+  function onMessage(raw){
+    const lines = buildLines(raw);
+    if (lines.length === 0){ pending = null; hide(); return; }   // clear → hide
+    if (!visible){ show(lines); }                                // first show
+    else { stage.classList.remove("show"); visible = false; pending = lines; } // swap → out, then in
+  }
+
+  stage.addEventListener("transitionend", (e) => {
+    if (e.propertyName !== "opacity") return;
+    if (!visible && pending){            // fade-out finished → bring up next verse
+      const next = pending; pending = null; show(next);
+    } else if (!visible && !pending){    // fully hidden → drop the DOM
+      stage.replaceChildren();
+    }
+  });
+
+  // ── broker: live verse text ──────────────────────────────────────────
+  brokerState().then(s => s.subscribe("verseText", onMessage));
+
+  // console tinkering / external control
+  window.__verse = { show: t => onMessage(t), hide: () => onMessage("") };
+</script>
+</body>
+</html>

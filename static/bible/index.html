@@ -138,12 +138,13 @@ import { index as kjv }  from "./kjv.json.js";
 import { index as nlt }  from "./nlt.json.js";
 import { index as nkjv } from "./nkjv.json.js";
 import { index as amp }  from "./amp.json.js";
+import { index as ampc } from "./ampc.json.js";
 
 const { div, span, input, button, select, option, label, br } = van.tags;
 
 /* ═══════════════════════ Bible data ═══════════════════════ */
 const bibles = {};
-for (const [id, bible] of Object.entries({ roh, seb, sep, ssv, bot, csp, kjv, nlt, nkjv, amp })) {
+for (const [id, bible] of Object.entries({ roh, seb, sep, ssv, bot, csp, kjv, nlt, nkjv, amp, ampc })) {
   bibles[id] = { ...bible };
   bibles[id].books = {};
   let i = 0;
@@ -446,11 +447,7 @@ function boundSelect(getValue, onchange, options) {
 /* ═══════════════════════ App ═══════════════════════ */
 function BibleApp() {
   // connect to the sync transport (default: gun); room/password come from the URL
-  s.connect({
-    space: "bible",
-    password: location.hash.slice(1) || "demo",
-    ...Object.fromEntries(new URLSearchParams(location.search)),
-  });
+  s.connectFromUrl({ space: "bible" });
 
   const mainPreview  = previewDiv("preview",       van.derive(() => `${s.line1}<br/>${s.line2}`));
   const nextPreview  = previewDiv("preview next",  line2Next);

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>BG · Paper Shader</title>
+<title>BG · Full (program)</title>
 <style>
   html, body {
     margin: 0;
@@ -52,22 +52,20 @@
 
   const view = createShaderView(host);
 
-  // Reactive synced state. `show` toggles visibility, `config` is a JSON string
-  // carrying { shader, speed, params, sizing }. The overlay only listens.
-  const s = multiBrokerState({ show: true, config: "" });
-  s.connect({
-    space: "bg",
-    password: location.hash.slice(1) || "demo",
-    ...Object.fromEntries(new URLSearchParams(location.search)),
-  });
+  // Reactive synced state. `show` toggles visibility, `program` is a JSON
+  // string carrying { shader, speed, params, sizing } — the "on air" config
+  // pushed here by the Controls panel's Go button (or Live mode). The overlay
+  // only listens.
+  const s = multiBrokerState({ show: true, program: "" });
+  s.connectFromUrl({ space: "bg" });
 
   // Show a default shader immediately, before any controller state arrives.
   let cur = makeConfig(SHADERS[0].id);
   view.update(cur);
 
-  // Config -> rebuild / update the mounted shader. (subscribe, not van.derive,
-  // so this overlay carries no JS-framework dependency.)
-  s.subscribe("config", (raw) => {
+  // Program config -> rebuild / update the mounted shader. (subscribe, not
+  // van.derive, so this overlay carries no JS-framework dependency.)
+  s.subscribe("program", (raw) => {
     if (!raw) return;
     let cfg;
     try { cfg = JSON.parse(raw); } catch { return; }

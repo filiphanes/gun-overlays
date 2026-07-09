@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+
+<head>
+	<title>Verses Tablet</title>
+	<link rel="stylesheet" href="../style.css" />
+	<script src="../script.js"></script>
+	<style>
+		#slides {
+			display: inline-flex;
+			gap: 1vw;
+			flex-wrap: wrap;
+		}
+		#slides section {
+			width: 30vw;
+		}
+		section h2 {
+			display: none;
+		}
+		section img {
+            max-width: 100%
+		}
+		#songList {
+			padding: .25rem;
+			position: fixed;
+			top: 0;
+			left: 0;
+		}
+		#songList li {
+			display: inline-block;
+			margin: 0 .25rem 0 0;
+		}
+		#songList li.current {
+			background: darkgreen;
+		}
+	</style>
+</head>
+
+<body>
+	<ol id="songList"></ol>
+	<div id="slides"></div>
+	<section id="controls">
+		<button title="Prev" onclick="selectVerse(verseIndex-1)"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000"><path d="M744-160 280-624v264h-80v-400h400v80H336l464 464-56 56Z"/></svg></button>
+		<button id="hide" title="Hide" onclick="toggleHidden()"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000"><path d="m644-428-58-58q9-47-27-88t-93-32l-58-58q17-8 34.5-12t37.5-4q75 0 127.5 52.5T660-500q0 20-4 37.5T644-428Zm128 126-58-56q38-29 67.5-63.5T832-500q-50-101-143.5-160.5T480-720q-29 0-57 4t-55 12l-62-62q41-17 84-25.5t90-8.5q151 0 269 83.5T920-500q-23 59-60.5 109.5T772-302Zm20 246L624-222q-35 11-70.5 16.5T480-200q-151 0-269-83.5T40-500q21-53 53-98.5t73-81.5L56-792l56-56 736 736-56 56ZM222-624q-29 26-53 57t-41 67q50 101 143.5 160.5T480-280q20 0 39-2.5t39-5.5l-36-38q-11 3-21 4.5t-21 1.5q-75 0-127.5-52.5T300-500q0-11 1.5-21t4.5-21l-84-82Zm319 93Zm-151 75Z"/></svg></button>
+		<button title="Next" onclick="selectVerse(verseIndex+1)"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000"><path d="M360-200v-80h264L160-744l56-56 464 464v-264h80v400H360Z"/></svg></button>
+	</section>
+	<svg id="disconnected" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000"><path d="M792-56 400-448v174l62-62 58 56-160 160-160-160 58-56 62 62v-254L56-792l56-56 736 736-56 56ZM640-434l-80-80v-174l-64 64-56-56 160-160 160 160-56 56-64-64v254Z"/></svg>
+
+	<script>
+		const slides = document.getElementById("slides");
+		const songList = document.getElementById("songList");
+		const hideButton = document.getElementById("hide");
+		let songPaths = [];
+		let songPath = "";
+		let verses = [];
+		let verseIndex = 0;
+		let hidden = false;
+
+		connectToFileWebSocket("/var/list/tablet.txt", async data => {
+			songPaths = data.split('\n');
+			renderSongs(songPaths);
+		});
+
+		connectToFileWebSocket("/var/song/path.txt", async data => {
+			data = data.trim();
+			if (songPath == data) return;
+			songPath = data;
+			verses = await parseSong(songPath) || [];
+			renderVerses();
+			selectVerse(verseIndex, true);
+			for (const li of songList.children) {
+				li.classList.toggle("current", li.path == songPath);
+			}
+		});
+
+		const updateVerseIndex = connectToFileWebSocket("/var/song/verseindex.txt", data => {
+			const verseIndex = parseInt(data);
+			selectVerse(verseIndex, true);
+		});
+
+		function renderSongs(paths) {
+			songList.innerHTML = "";
+			paths.forEach((path, i) => {
+				const li = document.createElement("li");
+            	li.textContent = path.replaceAll(/^.+\/|\.[^/.]+$/g, ""); // remove dir and extension
+				li.path = path;
+				li.classList.toggle("current", path == songPath);
+				li.onclick = () => selectSong(path);
+				songList.appendChild(li);
+			});
+		}
+
+		function renderVerses() {
+			slides.innerHTML = "";
+			verses.forEach((verse, i) => {
+				const section = document.createElement("section");
+				section.innerHTML = verse;
+				section.classList.toggle("current", i === verseIndex);
+				section.onclick = () => selectVerse(i);
+				slides.appendChild(section);
+			});
+			updateTimers();
+		}
+
+		async function selectVerse(index, dontUpdate) {
+			if (index < 0 ||
+				index >= verses.length ||
+				verseIndex == index ||
+				!slides.children[index]
+			) return;
+			verseIndex = index;
+			// Clear and set current verse class
+			for (const section of slides.children) section.classList.remove("current");
+			slides.children[index].classList.add("current");
+			slides.children[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+			if (!dontUpdate) updateVerseIndex(`${index}`);
+			if (hidden) return;
+
+			PUT("/var/song/verse.html", verses[verseIndex]);
+
+			// Make plain text version
+			let txt = "";
+			let pindex = 0;
+			for (const node of slides.children[index].getElementsByTagName("P")) {
+				pindex++;
+				txt = node.innerText;
+				console.log('txt', pindex, txt)
+				if (pindex === 1) PUT(`/var/song/verse.txt`, txt);
+				else PUT(`/var/song/verse${pindex}.txt`, txt);
+			}
+
+			if (pindex > 0) return;
+			for (let node of slides.children[index].childNodes) {
+				if (node.nodeName === "#text") txt += node.textContent;
+			}
+			PUT("/var/song/verse.txt", txt);
+		}
+		
+		async function selectSong(path) {
+			await PUT('/var/song/path.txt', path)
+		}
+		
+		async function toggleHidden() {
+			hidden = !hidden;
+			hideButton.classList.toggle("danger", hidden);
+			if (hidden) {
+				PUT("/var/song/verse.html", "");
+				PUT("/var/song/verse.txt", "");
+			} else {
+				selectVerse(verseIndex);
+			}
+		}
+
+		function handleKeyDown(event) {
+			if (event.key === "ArrowUp" && verseIndex > 0) {
+				selectVerse(verseIndex - 1);
+				event.preventDefault();
+			} else if (event.key === "ArrowDown" && verseIndex < verses.length - 1) {
+				selectVerse(verseIndex + 1);
+				event.preventDefault();
+			} else if (event.key === "H" || event.key === "h") {
+				toggleHidden();
+			}
+		}
+
+		document.addEventListener("keydown", handleKeyDown);
+		
+		setInterval(updateTimers, 1000);
+	</script>
+</body>

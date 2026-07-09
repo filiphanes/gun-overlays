@@ -1,0 +1,186 @@
+/* panel-frame.css — shared Golden Layout shell chrome used by every panel
+   dashboard (dash/, shaders/, …). Extracted from the original monolithic
+   dash/index.html so all panel dashboards share one look.
+
+   Load AFTER the Golden Layout theme CSS so the overrides below win.
+   Each dashboard sets window.PANEL_FRAME_CONFIG (see js/panel-frame.js). */
+:root {
+  /* Golden Layout dark-theme palette (the theme loaded alongside this file).
+     The toolbar / panel bar / combobox reuse these so they blend with GL. */
+  --gl-bg: #000;        /* .lm_goldenlayout          */
+  --gl-content: #222;   /* .lm_content               */
+  --gl-tab: #111;       /* .lm_tab                   */
+  --gl-line: #000;      /* splitter / outer borders  */
+  --gl-hover: #444;     /* splitter:hover            */
+  --gl-text: #ddd;      /* active tab text           */
+  --gl-mut: #999;       /* inactive tab text         */
+  --pf-accent: #ffd66b; /* echoes GL's selected gold; each dashboard may override */
+}
+html, body {
+  height: 100%;
+  margin: 0;
+}
+body {
+  background: var(--gl-bg);
+  color: var(--gl-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ---- toolbar ---- */
+.toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--gl-tab);
+  border-bottom: 1px solid var(--gl-line);
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1001;
+}
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0 0.4rem 0 0.2rem;
+  color: var(--pf-accent);
+  white-space: nowrap;
+}
+input[type="text"] {
+  background: var(--gl-tab);
+  color: var(--gl-text);
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.82rem;
+  font-family: inherit;
+  min-width: 0;
+}
+input[type="text"]:focus { outline: none; border-color: var(--gl-hover); }
+
+button {
+  background: var(--gl-content);
+  color: var(--gl-text);
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+button:hover { background: var(--gl-hover); }
+button:active { background: var(--gl-tab); }
+button.icon { padding: 0.25rem 0.45rem; }
+.sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--gl-line);
+  margin: 0 0.15rem;
+}
+.spacer { flex: 1 1 auto; }
+.hint-link {
+  color: var(--gl-mut);
+  font-size: 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 0 0.15rem;
+}
+.hint-link:hover { color: var(--pf-accent); }
+
+.status {
+  font-size: 0.72rem;
+  color: var(--gl-mut);
+  min-width: 4.5rem;
+  text-align: right;
+  white-space: nowrap;
+}
+.status.dirty { color: var(--pf-accent); }
+.status.error { color: #ff6b6b; }
+
+/* ---- add-panel combobox (one input: search modules OR paste URL) ---- */
+.combo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 1 1 20rem;
+  min-width: 16rem;
+}
+.combo > input { flex: 1 1 auto; width: 100%; }
+.combo-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 22rem;
+  max-width: 34rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--gl-tab);
+  border: 1px solid #333;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  list-style: none;
+  margin: 0;
+  padding: 2px 0;
+  z-index: 1000;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .65);
+}
+.combo-results li {
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.combo-results li .cr-name { font-size: 0.82rem; color: var(--gl-text); }
+.combo-results li .cr-meta { font-size: 0.68rem; color: var(--gl-mut); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.combo-results li:hover { background: #1a1a1a; }
+.combo-results li.active { background: #2c2c2c; box-shadow: inset 2px 0 var(--pf-accent); }
+.combo-results li.empty { cursor: default; color: var(--gl-mut); font-size: 0.8rem; }
+.combo-results li.empty:hover { background: transparent; }
+
+/* ---- layout container ---- */
+#layout {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 0;
+  background: var(--gl-bg);
+}
+
+/* ---- per-panel: an iframe fills the whole panel ---- */
+.dash-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+.dash-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #000;
+  display: block;
+}
+
+/* ---- Golden Layout chrome tweaks ----
+   Flush panels: drop the dark theme's #222 content background so each panel's
+   iframe bleeds edge-to-edge with no border / gap around it. The thin
+   (near-invisible until hover) splitters stay, so panels are still resizable. */
+.lm_content { background: transparent; }
+.lm_header .lm_tab { font-size: 0.78rem; }
+
+#fatal {
+  display: none;
+  margin: 2rem;
+  color: #ff6b6b;
+  font-family: ui-monospace, monospace;
+  white-space: pre-wrap;
+}

@@ -7,7 +7,7 @@
 <meta http-equiv="X-UA-Compatible" content="ie=edge" />
 <meta name="mobile-web-app-capable" content="yes" />
 <title>Scoreboard Controller</title>
-<link rel="stylesheet" href="../css/bootstrap.min.css">
+<link rel="stylesheet" href="../vendor/bootstrap.min.css">
 <style>
   html, body { background: #222222; }
   input[type="number"] { width: 3rem; }
@@ -17,8 +17,9 @@
 <script type="module">
 import van from "../js/van.js";
 import { multiBrokerState } from "../js/broker.js";
+import { textIn, numIn } from "../js/ui.js";
 
-const { div, span, input, button, label, h5, p, small, a } = van.tags;
+const { div, span, button, label, h5, p, small, a } = van.tags;
 
 const s = multiBrokerState({
   show: false,
@@ -28,24 +29,8 @@ const s = multiBrokerState({
   score2: "Score 2",
 });
 
-s.connect({
-  space: "scoreboard",
-  password: location.hash.slice(1) || "demo",
-  ...Object.fromEntries(new URLSearchParams(location.search)),
-});
+s.connectFromUrl({ space: "scoreboard" });
 
-// text input bound to a broadcasting state key
-const textIn = (key, id, placeholder) => input({
-  class: "form-control", type: "text", id, placeholder,
-  value: () => s[key],
-  oninput: (e) => { s[key] = e.target.value; },
-});
-// number input bound to a broadcasting state key
-const numIn = (key, id) => input({
-  class: "form-control", type: "number", id,
-  value: () => s[key],
-  oninput: (e) => { s[key] = e.target.value; },
-});
 
 van.add(document.body,
   div({ class: "container-fluid my-3" },
@@ -57,17 +42,17 @@ van.add(document.body,
             div({ class: "form-row" },
               div({ class: "form-group col-md-6" },
                 label({ for: "team1" }, "Team 1:"),
-                textIn("team1", "team1", "Team 1 Name")),
+                textIn(s, "team1", { id: "team1", placeholder: "Team 1 Name" })),
               div({ class: "form-group col-md-6" },
                 label({ for: "team2" }, "Team 2:"),
-                textIn("team2", "team2", "Team 2 Name")),
+                textIn(s, "team2", { id: "team2", placeholder: "Team 2 Name" })),
             ),
             div({ class: "form-group" },
               p({}, "Score:"),
               div({ class: "input-group mb-3" },
-                numIn("score1", "score1"),
+                numIn(s, "score1", { id: "score1" }),
                 span({ class: "form-control input-group-text col-1" }, "-"),
-                numIn("score2", "score2"),
+                numIn(s, "score2", { id: "score2" }),
               ),
               small({ class: "form-text text-muted" },
                 "Team names and Scores are updated automatically on change and show."),

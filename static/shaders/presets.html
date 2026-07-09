@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>BG · Presets</title>
+<link rel="stylesheet" href="./shaders.css" />
+</head>
+<body>
+
+<div class="page">
+  <div>
+    <div class="save-row">
+      <input id="presetName" type="text" placeholder="Save current look as…" maxlength="40" />
+      <button id="presetSave">Save</button>
+    </div>
+    <div id="presetStrip" class="thumb-strip"></div>
+    <div class="subhead">Looks</div>
+    <div id="looksList" class="looks-list"></div>
+  </div>
+  <p class="hint footer-hint">
+    Click a look to apply it across the preview + controls panels (and to the
+    program overlay when Live is on; otherwise use the Controls panel’s Go to
+    send it to air). Save your own looks with the name field — they're stored in this browser.
+  </p>
+</div>
+
+<script type="module">
+  // Presets panel — applies official Looks + your saved presets. Publishing a
+  // look sends a new config to the `preview` channel (and to `program` too when
+  // Live is on, so a look can go straight to air). Other panels follow it.
+  import * as ui from "./ui.js";
+  import { SHADERS, makeConfig } from "./shaders.js";
+
+  const el = (id) => document.getElementById(id);
+  const s = ui.connectBroker();
+
+  let cfg = makeConfig(SHADERS[0].id);
+  let lastSent = "";
+  const commit = (c) => {
+    cfg = c;
+    const str = JSON.stringify(cfg);
+    lastSent = str;
+    s.preview = str;
+    if (s.live) s.program = str;
+  };
+
+  const thumbs = ui.createThumbRenderer();
+  let activeLook = -1; // unknown until we apply a look ourselves
+  const looks = ui.createLooksPanel({
+    container: el("looksList"),
+    thumbs,
+    onApply: (config, fi) => { commit(config); activeLook = fi; },
+  });
+
+  ui.createUserPresets({
+    strip: el("presetStrip"), nameInput: el("presetName"), saveBtn: el("presetSave"),
+    thumbs, getConfig: () => cfg,
+    onApply: (config) => { commit(config); activeLook = -1; looks.setActive(-1); },
+  });
+
+  // Track remote preview updates (e.g. Controls tweaking a param). We can't map
+  // an arbitrary config back to a Look, so just clear the active highlight.
+  s.subscribe("preview", (raw) => {
+    if (!raw || raw === lastSent) return; // skip our own echo
+    let c;
+    try { c = JSON.parse(raw); } catch { return; }
+    cfg = c;
+    activeLook = -1;
+    looks.setActive(-1);
+  });
+</script>
+</body>
+</html>

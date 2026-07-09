@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+
+<head>
+	<title>List</title>
+	<link rel="stylesheet" href="style.css" />
+	<script src="script.js"></script>
+</head>
+
+<body>
+<ul id="songList"></ul>
+<section id="controls">
+	<button title="Prev" onclick="setSongIndex(songIndex-1)"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000"> <path d="M860-240 500-480l360-240v480Zm-400 0L100-480l360-240v480Zm-80-240Zm400 0Zm-400 90v-180l-136 90 136 90Zm400 0v-180l-136 90 136 90Z" /></svg></button>
+	<label class="iconSelect" title="List">
+		<svg viewBox="0 0 24 24" width="1rem" height="1rem" aria-hidden="true"><path fill="currentColor" d="M3 5h18v2H3V5Zm0 6h18v2H3v-2Zm0 6h18v2H3v-2Z"/></svg>
+		<select id="lists" onchange="onchangeList()"></select>
+	</label>
+	<button title="Save" onclick="saveList()"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000"> <path d="M840-680v480q0 33-23.5 56.5T760-120H200q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h480l160 160Zm-80 34L646-760H200v560h560v-446ZM480-240q50 0 85-35t35-85q0-50-35-85t-85-35q-50 0-85 35t-35 85q0 50 35 85t85 35ZM240-560h360v-160H240v160Zm-40-86v446-560 114Z" /></svg></button>
+	<button title="Next" onclick="setSongIndex(songIndex+1)"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000"> <path d="M100-240v-480l360 240-360 240Zm400 0v-480l360 240-360 240ZM180-480Zm400 0Zm-400 90 136-90-136-90v180Zm400 0 136-90-136-90v180Z" /></svg></button>
+</section>
+<svg id="disconnected" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000"><path d="M792-56 400-448v174l62-62 58 56-160 160-160-160 58-56 62 62v-254L56-792l56-56 736 736-56 56ZM640-434l-80-80v-174l-64 64-56-56 160-160 160 160-56 56-64-64v254Z"/></svg>
+
+<script>
+	/* Played-out playlist editor backed by broker state:
+	     s.playlist      — newline-joined paths of the *active* queue
+	     s.playlistName  — which saved list the active queue follows
+	     s.playlists     — JSON { name: [paths...] } of all saved lists
+	     s.songPath      — the currently output song (drives highlighting)
+	   Saved lists live in the single `playlists` broker key (no file server). */
+
+	// Paths are relative to the song library dir (static/song/songs/), which
+	// is where songs.html's picker reads from. Seeded once on first run when
+	// no saved lists exist yet (see init()). Edit freely.
+	const DEFAULT_PLAYLIST = [
+		"amazing-grace.txt",
+		"how-great-thou-art.txt",
+		"holy-holy-holy.txt",
+		"it-is-well.txt",
+		"10-000-reasons.txt",
+		"what-a-friend.txt",
+		"great-is-thy-faithfulness.txt",
+		"praise-to-the-lord.txt",
+		"hosanna.txt",
+		"nivele/pan-s-nami.txt",
+	];
+
+	const listsNode = document.getElementById("lists");
+	const songListElement = document.getElementById("songList");
+	let songIndex = -1;
+	let songPath = "";
+	let index1 = null;
+	let s; // broker state
+
+	function allPlaylists() { try { return JSON.parse(s.playlists || "{}"); } catch { return {}; } }
+	function setAll(obj) { s.playlists = JSON.stringify(obj); }
+	function activeLines() { return (s.playlist || "").split(/\r?\n/).filter(Boolean); }
+	function setActive(lines) { s.playlist = lines.join("\n"); }
+
+	async function init() {
+		s = await brokerState();
+		// bootstrap a "current" list if there's nothing yet: seed the default
+		// song set (DEFAULT_PLAYLIST) only when the active queue is also empty,
+		// so an existing live queue from another tab is preserved as-is.
+		if (Object.keys(allPlaylists()).length === 0) {
+			const seed = activeLines().length ? activeLines() : DEFAULT_PLAYLIST;
+			setAll({ current: seed });
+			if (!activeLines().length) setActive(seed);
+		}
+		s.subscribe("playlists", () => renderListsSelect());
+		s.subscribe("playlist", () => { songIndex = activeLines().indexOf(songPath); renderSongList(activeLines()); });
+		s.subscribe("playlistName", () => renderListsSelect());
+		s.subscribe("songPath", (v) => {
+			// Update UI only — never re-write songPath from its own subscriber,
+			// or the local broker notify (which fires on every write) would loop.
+			songPath = (v || "").trim();
+			songIndex = activeLines().indexOf(songPath);
+			for (const li of songListElement.children) li.classList.toggle("current", li.path === songPath);
+		});
+		// initial paint
+		songPath = (s.songPath || "").trim();
+		songIndex = activeLines().indexOf(songPath);
+		renderListsSelect();
+		renderSongList(activeLines());
+	}
+
+	function renderListsSelect() {
+		const names = Object.keys(allPlaylists()).sort();
+		listsNode.innerHTML = "";
+		for (const p of names) {
+			const option = document.createElement("option");
+			option.value = p;
+			option.textContent = p.replace(/\.[^/.]+$/, ""); // strip extension if any
+			option.selected = p === s.playlistName;
+			listsNode.appendChild(option);
+		}
+	}
+
+	function renderSongList(paths) {
+		songListElement.innerHTML = "";
+		paths.forEach((path, index) => {
+			const li = document.createElement("li");
+			li.path = path;
+			li.draggable = true;
+			li.onclick = () => setSongIndex(index);
+			li.ondragstart = dragStart;
+			li.ondragover = dragOver;
+			li.ondragleave = dragLeave;
+			li.ondrop = drop;
+			if (index == songIndex) li.classList.add("current");
+			const div = document.createElement("div");
+			dir = path.replace(/(^|\/)[^\/]+$/, ""); // remove filename
+			if (dir) {
+				const dirspan = document.createElement("span");
+				dirspan.className = "dir";
+				dirspan.textContent = dir;
+				div.appendChild(dirspan);
+			}
+			const span = document.createElement("span");
+			span.textContent = path.replaceAll(/^.+\/|\.[^/.]+$/g, "");
+			div.appendChild(span);
+			li.appendChild(div);
+			appendButton(li, "×", (event) => { removeSongFromList(index); event.stopPropagation(); });
+			songListElement.appendChild(li);
+		});
+	}
+
+	async function onchangeList() {
+		if (!listsNode.value) return;
+		s.playlistName = listsNode.value;
+		setActive(allPlaylists()[listsNode.value] || []);
+	}
+
+	async function setSongIndex(index) {
+		const list = activeLines();
+		if (index < 0 || index >= list.length) return;
+		songIndex = index;
+		await PUT("/var/song/path.txt", list[index]);
+	}
+
+	async function moveSong(from, to) {
+		const list = activeLines();
+		if (from < 0 || from >= list.length || to < 0 || to >= list.length || from == to) return;
+		list.splice(to, 0, list.splice(from, 1));
+		setActive(list);
+		// keep whose songPath is the current output
+		const newSongPath = list[songIndex];
+		if (newSongPath && newSongPath !== songPath) PUT("/var/song/path.txt", newSongPath);
+	}
+
+	async function saveList() {
+		const name = (window.prompt("Type list filename!", s.playlistName) || "").replace(/\.txt$/, "");
+		if (!name) return;
+		const obj = allPlaylists();
+		obj[name] = activeLines();
+		setAll(obj);
+		s.playlistName = name;
+		console.log("List saved as", name);
+	}
+
+	async function removeSongFromList(index) {
+		const list = activeLines();
+		list.splice(index, 1);
+		songIndex = list.indexOf(songPath);
+		renderSongList(list);
+		setActive(list);
+		// persist into the saved list too, so the change survives a switch
+		const obj = allPlaylists();
+		if (obj[s.playlistName]) { obj[s.playlistName] = list; setAll(obj); }
+	}
+
+	/* Drag&Drop reordering */
+	function dragStart(e) {
+		e.dataTransfer.effectAllowed = "move";
+		e.dataTransfer.setData("text/html", null);
+		index1 = Array.from(e.target.parentNode.children).indexOf(e.target);
+	}
+	function dragOver(e) {
+		event.preventDefault();
+		event.dataTransfer.dropEffect = "move";
+		let node = e.target;
+		while (node.parentNode !== songListElement) node = node.parentNode;
+		node.classList.add("over");
+	}
+	function dragLeave(e) {
+		event.preventDefault();
+		let node = e.target;
+		while (node.parentNode !== songListElement) node = node.parentNode;
+		node.classList.remove("over");
+	}
+	function drop(e) {
+		event.preventDefault();
+		let node = e.target;
+		while (node.parentNode !== songListElement) node = node.parentNode;
+		node.classList.remove("over");
+		const index2 = Array.from(node.parentNode.children).indexOf(node);
+		moveSong(index1, index2);
+	}
+
+	init();
+</script>
+</body>

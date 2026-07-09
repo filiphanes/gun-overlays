@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>BG · Preview</title>
+<link rel="stylesheet" href="./shaders.css" />
+</head>
+<body>
+
+<div class="page full">
+  <div class="preview-wrap" id="previewWrap"><div id="preview"></div></div>
+</div>
+
+<script type="module">
+  // Preview panel — listen-only, like full.html but for the PREVIEW config the
+  // operator is shaping. It never publishes; it just follows the broker
+  // `preview` channel and renders the live shader.
+  import * as ui from "./ui.js";
+  import { SHADERS, makeConfig } from "./shaders.js";
+
+  const el = (id) => document.getElementById(id);
+
+  const s = ui.connectBroker();
+  const preview = ui.createPreview({
+    host: el("preview"), wrap: el("previewWrap"),
+  });
+
+  // Show a default shader immediately, before any controller state arrives.
+  let cfg = makeConfig(SHADERS[0].id);
+  preview.update(cfg);
+
+  s.subscribe("preview", (raw) => {
+    if (!raw) return;
+    try { cfg = JSON.parse(raw); } catch { return; }
+    preview.update(cfg);
+  });
+</script>
+</body>
+</html>

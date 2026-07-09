@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>BG · Shader Dashboard</title>
+<link rel="stylesheet" href="./shaders.css" />
+</head>
+<body>
+
+<main>
+  <!-- Column 1: preview + visibility + presets -->
+  <section class="col">
+    <div class="preview-wrap" id="previewWrap"><div id="preview"></div></div>
+    <div class="preview-cap">
+      <span id="shaderName">—</span>
+      <div class="cap-right">
+        <span class="hint">overlay: <a id="overlayLink" target="_blank" href="/shaders/full.html">full.html</a></span>
+        <button id="pinBtn" class="mini" title="Pin preview — keep it visible while scrolling">📌</button>
+        <button id="previewToggle" class="mini" title="Pause + drop the preview WebGL context to save battery">Preview: on</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="subhead">Presets</div>
+      <div class="save-row">
+        <input id="presetName" type="text" placeholder="Save current look as…" maxlength="40" />
+        <button id="presetSave">Save</button>
+      </div>
+      <div id="presetStrip" class="thumb-strip"></div>
+      <div class="subhead">Looks</div>
+      <div id="looksList" class="looks-list"></div>
+    </div>
+    <p class="hint footer-hint">
+      Open <a id="overlayLink2" target="_blank" href="./full.html">full.html</a> on the display / OBS
+      (as a URL, not a local file — it needs ES modules). State syncs over the broker; reconnects restore it.
+    </p>
+  </section>
+
+  <!-- Column 2: speed/reset + appearance -->
+  <section class="col">
+    <div class="card">
+      <div class="btn-row">
+        <button id="resetBtn" title="Reset this shader to its defaults">Reset</button>
+        <button id="randomBtn" title="Randomize this shader’s parameters">🎲 Random</button>
+        <button id="hideBtn" title="Hide the program overlay (full.html)">Hide</button>
+        <button id="showBtn" class="primary" title="Show the program overlay (full.html)">Show</button>
+        <button id="goBtn" title="Send the preview shader to the program (full.html)">Go</button>
+        <label class="live" title="Live: send every edit straight to the program too">
+          <input id="liveCb" type="checkbox" /> Live
+        </label>
+      </div>
+      <div class="speed-row">
+        <label for="speed">Speed: <span id="speedVal">1.00</span></label>
+        <input id="speed" type="range" min="0" max="15" step="0.01" />
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Appearance</h3>
+      <div id="params"></div>
+    </div>
+  </section>
+
+  <!-- Column 3: transform (open) -->
+  <section class="col">
+    <details class="card" open>
+      <summary>Transform &amp; fit</summary>
+      <div id="transform" class="grid"></div>
+    </details>
+  </section>
+</main>
+
+<script type="module" src="./dashboard.js"></script>
+</body>
+</html>

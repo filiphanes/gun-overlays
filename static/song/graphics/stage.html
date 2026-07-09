@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<head>
+	<title>Stage</title>
+	<script src="../script.js"></script>
+	<style>
+		body {
+			margin: 0;
+			background-color: #000;
+			font-family: Arial, sans-serif;
+			font-size: 5vw;
+			color: #aaa;
+			overflow-x: hidden;
+			padding: 10px 0 100vh .25rem;
+		}
+
+		ul {
+			list-style: none;
+			margin: 0;
+		}
+
+		.slides section {
+			text-align: left;
+			white-space: pre;
+			line-height: 1;
+			width: 100vw;
+		}
+
+		.slides section.current {
+			font-size: 6vw;
+			color: #fff;
+		}
+
+		.slides section:last-child {
+			text-align: center;
+		}
+
+        .slides section > p {
+            margin: 0;
+        }
+		h1,
+		h2,
+		blockquote,
+		sup {
+			display: none;
+		}
+	</style>
+</head>
+
+<body>
+	<div class="slides"></div>
+	<script>
+		const slides = document.getElementsByClassName("slides")[0];
+		let currentSongPath = 0;
+		let verses = [];
+		let index = 0;
+
+		function scrollToIndex(index) {
+			Array.from(slides.children).forEach((li, i) => {
+				li.classList.toggle('current', i<=index)
+				if (i == index) {
+					li.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				}
+			});
+		}
+
+		connectToFileWebSocket("/var/song/path.txt", async data => {
+			data = data.trim();
+			if (currentSongPath == data) return;
+			currentSongPath = data;
+			verses = await parseSong(currentSongPath) || [];
+			verses.push('□')
+			renderVerses()
+			scrollToIndex(index)
+		});
+
+		connectToFileWebSocket("/var/song/verseindex.txt", data => {
+			index = parseInt(data);
+			scrollToIndex(index);
+		});
+
+		function renderVerses() {
+			slides.innerHTML = "";
+			for (const verse of verses) {
+				const section = document.createElement("section");
+				section.innerHTML = verse;
+				slides.appendChild(section);
+			}
+		}
+
+		setInterval(updateTimers, 1000);
+	</script>
+</body>

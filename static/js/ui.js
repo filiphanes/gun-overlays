@@ -1,7 +1,10 @@
 // Shared VanJS DOM helpers for the static (build-free) controllers.
 // Re-exported `van` so controllers import everything UI-related from one place.
+// The broker-bound input builders (textIn/numIn/boundInput) take a
+// multiBrokerState() `s` and bind an <input> two-way to `s[key]`: reading
+// registers a VanJS dependency, writing broadcasts through the broker setter.
 
-import { van } from "./van.js";
+import van from "./van.js";
 
 // Append a render result (node | string | array | null/false) to a parent.
 export function appendAll(el, out) {
@@ -36,5 +39,24 @@ export function boundSelect(getValue, onchange, optionSpecs) {
   van.derive(() => { el.value = String(getValue() ?? ""); });
   return el;
 }
+
+// Broker-bound <input> two-way bound to `s[key]`. The `value`/`oninput` binding
+// is applied last so it always wins; `class` (default "form-control", matching
+// the Bootstrap controllers that originally inlined this) and `type` defaults
+// are pulled out of `rest` so a caller can still override either by passing
+// `class:`/`type:` explicitly. Any other props (id, placeholder, min, max, …)
+// pass straight through.
+export function boundInput(s, key, { type = "text", class: cls = "form-control", ...rest } = {}) {
+  const { input } = van.tags;
+  return input({
+    class: cls, type, ...rest,
+    value: () => s[key],
+    oninput: (e) => { s[key] = e.target.value; },
+  });
+}
+
+// Convenience shortcuts for the common text / number cases.
+export const textIn = (s, key, rest = {}) => boundInput(s, key, { type: "text", ...rest });
+export const numIn  = (s, key, rest = {}) => boundInput(s, key, { type: "number", ...rest });
 
 export { van };

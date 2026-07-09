@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<head>
+	<title>Full</title>
+	<style>
+		body {
+			margin: 0;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			height: 100vh;
+			background-color: #000;
+			color: #fff;
+			font-family: Arial, sans-serif;
+			font-size: 5vw;
+		}
+
+		#currentVerse {
+			text-align: center;
+			white-space: pre;
+		}
+		h1, h2 {
+			font-size: inherit;
+			margin: 0;
+		}
+		p {
+			margin: 0;
+			border: 1px solid #ccc;
+			padding: 1rem;
+		}
+	</style>
+	<script src="../script.js"></script>
+</head>
+
+<body>
+	<section id="currentVerse"></section>
+	<script>
+		const currentVerseElement = document.getElementById("currentVerse");
+		connectToFileWebSocket("/var/song/verse.html", data => {
+			currentVerseElement.innerHTML = data;
+			updateTimers();
+		});
+		setInterval(updateTimers, 1000);
+	</script>
+</body>

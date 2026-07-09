@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stage Timers</title>
+    <script src="../script.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: black;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            text-align: center;
+            width: 100vw;
+        }
+        .main-timer {
+            font-size: 16vw;
+            font-weight: bold;
+            border: 2px solid #ccc;
+            padding: 3vw;
+            margin-bottom: 2vw;
+        }
+        .main-timer time {
+            color: limegreen;
+        }
+        .label {
+            font-size: 3vw;
+        }
+        .sub-timers {
+            display: flex;
+            justify-content: space-between;
+        }
+        .sub-timer {
+            width: 42%;
+            border: 2px solid #ccc;
+            padding: 3vw;
+        }
+        .sub-timer time {
+            font-size: 10vw;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-timer">
+            <div class="label">SLOVO</div>
+            <time since-src="/var/timer/timer-start.txt" datetime="PT7:00">mm:ss</time>
+        </div>
+        <div class="sub-timers">
+            <div class="sub-timer">
+                <div class="label">ČAS</div>
+                <time>H:mm</time>
+            </div>
+            <div class="sub-timer">
+                <div class="label">LIVE</div>
+                <time since-src="/var/timer/live-start.txt">H:mm:ss</time>
+            </div>
+        </div>
+    </div>
+</body>
+<script>
+    updateTimers();
+    setInterval(updateTimers, 1000);
+</script>
+</html>

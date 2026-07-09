@@ -1,9 +1,9 @@
 // Shared registry + helpers for the Paper Shaders background module.
 //
 // Imports the vanilla `@paper-design/shaders` build from a locally vendored
-// copy (vendor/@paper-design/shaders/0.0.77), so the whole module is fully
-// offline / build-free. Both bg.html (the overlay) and dashboard/index.html
-// (the controller) import from here.
+// copy (../vendor/@paper-design/shaders/0.0.77), so the whole module is fully
+// offline / build-free. Both full.html (the program overlay) and the
+// dashboard / split panels (the controllers) import from here.
 //
 // Covers every self-contained background / pattern shader in the library,
 // PLUS the image-filter shaders (water, fluted-glass, halftone-dots,
@@ -55,7 +55,7 @@ import {
   HalftoneDotsTypes,
   HalftoneDotsGrids,
   HalftoneCmykTypes,
-} from "./vendor/@paper-design/shaders/0.0.77/index.js";
+} from "../vendor/@paper-design/shaders/0.0.77/index.js";
 
 // Re-export the enum objects so the controller can build <select> options.
 export const ENUMS = {

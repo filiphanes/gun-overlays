@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test multiview</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-wrap: wrap;
+        }
+        div {
+            width: 25vw;
+            height: 25vh;
+            overflow: hidden;
+            position: relative;
+            display: inline-block;
+            margin: 0;
+            padding: 0;
+        }
+        iframe {
+            width: 400%; /* Counteract scaling to maintain content size */
+            height: 400%; /* Counteract scaling to maintain content size */
+            transform: scale(0.25); /* Scale content to 25% */
+            transform-origin: 0 0; /* Scale from top-left */
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div>index <iframe src="../dashboard/index.html"></iframe></div>
+    <div>tablet <iframe src="tablet.html"></iframe></div>
+    <div>full <iframe src="full.html"></iframe></div>
+    <div>main <iframe src="main.html"></iframe></div>
+    <div>stage <iframe src="stage.html"></iframe></div>
+    <div>stage-pro <iframe src="stage-pro.html"></iframe></div>
+    <div>stage-pro-list <iframe src="stage-pro-list.html"></iframe></div>
+    <div>stage-timers <iframe src="stage-timers.html"></iframe></div>
+    <div>odpocet <iframe src="odpocet.html"></iframe></div>
+    <div>odpocet-velky <iframe src="odpocet-velky.html"></iframe></div>
+</body>
+</html>

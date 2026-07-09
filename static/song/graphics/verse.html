@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Songs — Live Verse</title>
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; color: white; }
+  body { display: grid; place-items: center; font: 600 5vw/1.3 system-ui, sans-serif; text-align: center; padding: 4vh 4vw; }
+  #verse { white-space: pre-wrap; max-width: 90vw; transition: opacity .6s ease; }
+  #verse p { margin: 0 0 .5em; }
+  #verse.fade { opacity: 0; }
+</style>
+<script src="../script.js"></script>
+</head>
+<body>
+<div id="verse"></div>
+<script>
+  // Live verse overlay. Lenverse read var/song/verse.html over a file
+  // WebSocket; here it subscribes to the broker `verse` key (HTML the verses
+  // panel publishes). Empty string hides the graphic with a fade.
+  const el = document.getElementById("verse");
+  let clearOnEnd = null;
+
+  function onVerse(text) {
+    const willHaveContent = (text || "").trim().length > 0;
+    if (clearOnEnd) { el.removeEventListener("transitionend", clearOnEnd); clearOnEnd = null; }
+    if (willHaveContent) {
+      el.classList.add("fade");
+      el.innerHTML = text;
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("fade")));
+    } else if (el.innerHTML.trim().length > 0) {
+      el.classList.add("fade");
+      clearOnEnd = () => { el.innerHTML = ""; clearOnEnd = null; };
+      el.addEventListener("transitionend", clearOnEnd, { once: true });
+    } else {
+      el.innerHTML = "";
+    }
+  }
+
+  brokerState().then(s => s.subscribe("verse", onVerse));
+</script>
+</body>
+</html>

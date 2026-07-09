@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>BG · Controls</title>
+<style>
+  /* Controls panel — no card chrome; sections flush in a Dash panel. */
+  .page { padding: 8px; }
+  .page > div,
+  .page > details { padding: 8px 10px; margin-bottom: 8px; }
+  .page > *:last-child { margin-bottom: 0; }
+  .page > details > summary { margin-bottom: 6px; }
+</style>
+<link rel="stylesheet" href="./shaders.css" />
+</head>
+<body>
+
+<div class="page">
+  <div>
+    <div class="btn-row">
+      <button id="resetBtn" title="Reset this shader to its defaults">Reset</button>
+      <button id="randomBtn" title="Randomize this shader’s parameters">🎲 Random</button>
+      <button id="goBtn" title="Send this preview shader to the program (full.html)">Go</button>
+      <label class="live" title="Live: send every edit straight to the program too">
+        <input id="liveCb" type="checkbox" /> Live
+      </label>
+    </div>
+    <div class="speed-row">
+      <label for="speed">Speed: <span id="speedVal">1.00</span></label>
+      <input id="speed" type="range" min="0" max="15" step="0.01" />
+    </div>
+  </div>
+
+  <div>
+    <h3><span id="shaderName">—</span> · appearance</h3>
+    <div id="params"></div>
+  </div>
+
+  <details open>
+    <summary>Transform &amp; fit</summary>
+    <div id="transform" class="grid"></div>
+  </details>
+</div>
+
+<script type="module">
+  // Controls panel — shapes the PREVIEW shader (speed + every parameter +
+  // transform). Each edit publishes to the `preview` broker channel; the `Go`
+  // button copies the current preview to the `program` channel (shown in
+  // full.html), and the `Live` checkbox makes every edit also push to `program`.
+  import * as ui from "./ui.js";
+  import { SHADERS, byId, makeConfig } from "./shaders.js";
+
+  const el = (id) => document.getElementById(id);
+  const s = ui.connectBroker();
+
+  let cfg = makeConfig(SHADERS[0].id);
+  let lastSent = "";
+  let live = false;
+
+  // Write the current cfg to the preview channel (and to program when live).
+  const commit = () => {
+    const str = JSON.stringify(cfg);
+    lastSent = str;
+    s.preview = str;
+    if (live) s.program = str;
+  };
+  // Copy the current preview cfg to the program channel ("take" it on air).
+  const go = () => { s.program = JSON.stringify(cfg); };
+
+  const speedIn = el("speed");
+  const speedVal = el("speedVal");
+  speedIn.addEventListener("input", () => {
+    cfg.speed = parseFloat(speedIn.value);
+    speedVal.textContent = (+speedIn.value).toFixed(2);
+    commit();
+  });
+
+  el("resetBtn").addEventListener("click", () => {
+    cfg = makeConfig(cfg.shader);
+    renderAll();
+    commit();
+  });
+
+  el("randomBtn").addEventListener("click", () => {
+    ui.randomizeParams(cfg);
+    renderAll();
+    commit();
+  });
+
+  el("goBtn").addEventListener("click", go);
+
+  const liveCb = el("liveCb");
+  liveCb.addEventListener("change", () => {
+    live = liveCb.checked;
+    s.live = live;
+    if (live) go(); // enabling live syncs the current preview to program immediately
+  });
+
+  function renderAll() {
+    el("shaderName").textContent = byId.get(cfg.shader).label;
+    speedIn.value = cfg.speed;
+    speedVal.textContent = (+cfg.speed).toFixed(2);
+    ui.renderParams(cfg, commit, el("params"));
+    ui.renderTransform(cfg, commit, el("transform"));
+  }
+
+  // Follow remote preview updates (e.g. a Look applied from the Presets panel).
+  s.subscribe("preview", (raw) => {
+    if (!raw || raw === lastSent) return; // skip our own echo
+    let c;
+    try { c = JSON.parse(raw); } catch { return; }
+    cfg = c;
+    renderAll();
+  });
+
+  // Keep the Live checkbox in sync if it's toggled elsewhere (e.g. the dashboard).
+  s.subscribe("live", (v) => {
+    live = !!v;
+    liveCb.checked = live;
+  });
+
+  renderAll();
+</script>
+</body>
+</html>

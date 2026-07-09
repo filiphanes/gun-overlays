@@ -1,0 +1,237 @@
+/* Shared styles for the shader dashboard (index.html) and its split panels
+   (preview.html / presets.html / controls.html). Extracted from index.html so
+   every shader page shares one look. Palette is the project's dark theme. */
+:root {
+  --bg: #1c1c1f;
+  --panel: #26262b;
+  --panel2: #2f2f36;
+  --line: #3a3a42;
+  --txt: #e6e6ea;
+  --mut: #9a9aa6;
+  --acc: #4f9bff;
+  --ok: #2ea36b;
+  --warn: #c7502e;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+button {
+  font: inherit; color: var(--txt); cursor: pointer;
+  background: var(--panel2); border: 1px solid var(--line);
+  padding: 6px 12px; border-radius: 7px;
+}
+button:hover { border-color: var(--mut); }
+button.primary { background: var(--ok); border-color: var(--ok); color: #fff; }
+button.active { outline: 2px solid var(--acc); outline-offset: 1px; }
+button.mini { padding: 2px 8px; border-radius: 5px; }
+button.mini.rm { color: var(--warn); }
+button:disabled { opacity: 0.4; cursor: default; }
+
+/* ---- integrated 3-column dashboard (index.html) ---- */
+main {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(340px, 1.25fr) minmax(250px, 0.85fr);
+  gap: 16px;
+  padding: 16px;
+  align-items: start;
+}
+@media (max-width: 1180px) { main { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 760px) {
+  main { grid-template-columns: 1fr; padding: 10px; gap: 12px; }
+  .card { padding: 10px 11px; margin-bottom: 12px; }
+  .preview-cap { font-size: 12px; }
+  .toprow { gap: 8px; }
+  .field { min-width: 0; }
+  .preview-wrap.pinned { width: min(52vw, 220px); bottom: 10px; right: 10px; }
+}
+
+/* ---- single-panel pages (preview/presets/controls) ----
+   These now live primarily inside Dash panel iframes, so the page chrome is
+   flushed edge-to-edge: no centered max-width, minimal padding, and the cards
+   drop their borders (the panel frame already provides the chrome). */
+.page {
+  padding: 8px;
+  max-width: none;
+  margin: 0;
+}
+.page.full { /* full-bleed preview page: edge-to-edge, 16:9, nothing else */
+  padding: 0;
+  height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.page.full .preview-wrap {
+  /* largest 16:9 box that fits the panel (works for landscape & portrait) */
+  width: min(100%, calc(100dvh * 16 / 9));
+  aspect-ratio: 16 / 9;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+}
+
+.cap-right { display: flex; gap: 8px; align-items: center; }
+.footer-hint { margin: 10px 2px 0; }
+
+.card {
+  background: var(--panel);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+.card > h3, .card > summary {
+  margin: 0 0 10px;
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--mut);
+}
+details.card > summary { cursor: pointer; list-style: none; margin-bottom: 0; }
+details.card > summary::-webkit-details-marker { display: none; }
+details.card[open] > .grid { margin-top: 10px; }
+
+.toprow { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 12px; color: var(--mut); }
+
+/* speed slider: full panel width; action buttons sit in a single row beneath it */
+.speed-row { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.speed-row label { font-size: 12px; color: var(--mut); }
+.speed-row input { width: 100%; }
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.btn-row button { flex: 1 1 auto; min-width: 54px; }
+.btn-row .live {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--txt); cursor: pointer;
+  white-space: nowrap; padding: 4px 4px;
+}
+.btn-row .live input { width: 16px; height: 16px; cursor: pointer; margin: 0; }
+select, input[type="text"] {
+  background: var(--bg); color: var(--txt);
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 7px 9px; min-width: 180px;
+}
+select:focus, input[type="text"]:focus { outline: none; border-color: var(--acc); }
+
+/* thumbnail tiles: shader rows + preset/user strips */
+.subhead { font-size: 12px; color: var(--mut); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 6px; }
+.subhead:not(:first-child) { margin-top: 14px; }
+.thumb-btn {
+  position: relative; display: block; flex: none;
+  border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+  background-color: #000; background-size: cover; background-position: center;
+  cursor: pointer; padding: 0; color: #fff;
+}
+.thumb-btn:hover { border-color: var(--acc); }
+.thumb-btn.active { outline: 2px solid var(--acc); outline-offset: 1px; border-color: var(--acc); }
+.thumb-btn .tlabel {
+  position: absolute; left: 7px; right: 7px; bottom: 5px;
+  font-size: 12px; font-weight: 600; color: #fff;
+  text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,.95);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+}
+.thumb-btn .del {
+  position: absolute; top: 4px; right: 4px; width: 18px; height: 18px;
+  line-height: 15px; padding: 0; border-radius: 50%;
+  background: rgba(0,0,0,.55); color: #fff; font-size: 13px; border: 1px solid var(--line);
+}
+.thumb-btn .del:hover { background: var(--warn); border-color: var(--warn); }
+
+/* looks: one grid per shader (preserves grouping), 4 tiles wide at 16:9 */
+.looks-list { display: flex; flex-direction: column; gap: 12px; padding-right: 2px; }
+
+/* preset / user + looks strips: a wrapping grid of 16:9 tiles.
+   Responsive: 1 column when narrow, auto-fill columns up to ~260px wide
+   (tiles grow slightly to fill the row rather than leaving a ragged gap). */
+.thumb-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 130px), 1fr)); gap: 6px; }
+.thumb-strip .thumb-btn { width: 100%; aspect-ratio: 16 / 9; height: auto; }
+.thumb-strip .empty { font-size: 12px; color: var(--mut); padding: 6px 2px; grid-column: 1 / -1; }
+.save-row { display: flex; gap: 8px; margin: 10px 0; }
+.save-row input { flex: 1; min-width: 0; }
+
+/* parameter controls */
+.ctrl { padding: 7px 0; }
+.ctrl .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.ctrl .head label { color: var(--txt); }
+.ctrl .val, .count, .hex { color: var(--mut); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 4px; background: var(--line); border-radius: 4px; outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--acc); cursor: pointer; border: 2px solid var(--bg);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%; background: var(--acc);
+  cursor: pointer; border: 2px solid var(--bg);
+}
+input[type="range"].alpha { width: 90px; }
+input[type="color"] {
+  -webkit-appearance: none; appearance: none;
+  width: 34px; height: 26px; padding: 0; border: 1px solid var(--line);
+  border-radius: 6px; background: none; cursor: pointer;
+}
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type="color"]::-webkit-color-swatch { border: none; border-radius: 5px; }
+.colorinp { display: flex; align-items: center; gap: 8px; flex: 1; }
+.colorinp .hex { min-width: 78px; }
+.row.color { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.ctrl.check label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.ctrl.check input { width: 16px; height: 16px; }
+.colorlist { display: flex; flex-direction: column; gap: 2px; }
+
+/* dot-less radio groups (enum params + Fit): pill buttons, checked = accent fill */
+.radio-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.radio-opt { position: relative; display: inline-flex; }
+.radio-opt input[type="radio"] {
+  position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; /* hide the dot */
+}
+.radio-opt span {
+  display: inline-block; padding: 6px 12px; border-radius: 7px; cursor: pointer;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--txt);
+  font-size: 13px; white-space: nowrap; user-select: none;
+}
+.radio-opt:hover span { border-color: var(--mut); }
+.radio-opt input[type="radio"]:focus-visible + span { outline: 2px solid var(--acc); outline-offset: 1px; }
+.radio-opt input[type="radio"]:checked + span { background: var(--acc); border-color: var(--acc); color: #fff; }
+
+/* image URL control (image-filter shaders) */
+.ctrl.image .imageinp { display: flex; gap: 8px; align-items: center; }
+.ctrl.image input[type="text"] { flex: 1; min-width: 0; }
+.ctrl.image .thumb { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; border: 1px solid var(--line); flex: none; background: #000; }
+.ctrl.image .hint-mini { font-size: 11px; color: var(--mut); margin-top: 4px; }
+
+/* preview */
+.preview-wrap { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  /* classic transparent checkerboard so shaders with a transparent background composite visibly */
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #c8c8d0 25%, transparent 25%),
+    linear-gradient(-45deg, #c8c8d0 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #c8c8d0 75%),
+    linear-gradient(-45deg, transparent 75%, #c8c8d0 75%);
+  background-size: 22px 22px;
+  background-position: 0 0, 0 11px, 11px -11px, -11px 0;
+}
+#preview { position: absolute; inset: 0; width: 100%; height: 100%; }
+.preview-wrap.pinned {
+  position: fixed; right: 14px; bottom: 14px;
+  width: min(40vw, 260px); aspect-ratio: 16 / 9; z-index: 200;
+  box-shadow: 0 10px 30px rgba(0,0,0,.55); border-color: var(--acc);
+}
+#pinBtn.active { outline: 2px solid var(--acc); outline-offset: 1px; }
+.preview-wrap.off::after {
+  content: "Preview off — click “Preview: on”"; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--mut); font-size: 13px; background: #000;
+}
+.preview-cap { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 0 14px; flex-wrap: wrap; }
+#shaderName { font-weight: 600; }
+.hint { color: var(--mut); font-size: 12px; }
+a { color: var(--acc); }
+#previewToggle.off { color: var(--warn); border-color: var(--warn); }

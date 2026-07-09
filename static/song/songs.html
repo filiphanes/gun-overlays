@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<head>
+    <title>Songs</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="script.js"></script>
+</head>
+<body>
+<ul id="songs"></ul>
+<section id="controls">
+    <label class="iconSelect" title="Directory">
+        <svg viewBox="0 0 16 16" width="1rem" height="1rem" aria-hidden="true"><path fill="currentColor" d="M1.5 2.5A1.5 1.5 0 0 1 3 1h3.379a1.5 1.5 0 0 1 1.06.44L8.062 2.5H13A1.5 1.5 0 0 1 14.5 4v8.5A1.5 1.5 0 0 1 13 14H3A1.5 1.5 0 0 1 1.5 12.5z"/></svg>
+        <select id="folders" onchange="onchangeFolder()"></select>
+    </label>
+    <input type="text" id="filterInput" placeholder="Filter" oninput="filterSongs()" />
+    <input type="checkbox" id="searchContent" onchange="filterSongs()" title="Search in content" />
+</section>
+<script>
+    // Read-only song library: list files under songs/, click to add to the
+    // active playlist (broker key `playlist`). No editing/import — the library
+    // is served as static files.
+    const foldersNode = document.getElementById("folders");
+    const songsNode = document.getElementById("songs");
+    const filterInput = document.getElementById("filterInput");
+    const searchContent = document.getElementById("searchContent");
+    const normalizedSongs = {};
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+    let folders = [""];
+    let currentFolder = "";
+    let currentListData = [];
+
+    async function fetchSongs() {
+        folders = [""];
+        let songFiles = await fetchDirRecursive(SONGS);
+        songFiles.sort(collator.compare);
+        renderSongList(songFiles);
+        renderFolders(folders);
+    }
+
+    function renderFolders(folders) {
+        foldersNode.innerHTML = "";
+        for (let folder of folders) {
+            const option = document.createElement("option");
+            option.value = folder;
+            option.textContent = folder.substr(0, folder.length - 1);
+            foldersNode.appendChild(option);
+        }
+    }
+
+    function renderSongList(songPaths) {
+        songsNode.innerHTML = "";
+        songPaths.forEach(songPath => {
+            const li = document.createElement("li");
+            li.dataset.path = songPath;
+            const div = document.createElement("div");
+            dir = songPath.replace(/(^|\/)[^\/]+$/, ""); // remove filename
+            if (dir) {
+                const dirspan = document.createElement("span");
+                dirspan.className = "dir";
+                dirspan.textContent = dir;
+                div.appendChild(dirspan);
+            }
+            const span = document.createElement("span");
+            span.textContent = songPath.replaceAll(/^.+\/|\.[^/.]+$/g, ""); // remove dir + ext
+            div.appendChild(span);
+            li.appendChild(div);
+            li.onclick = () => onclickSong(songPath);
+            songsNode.appendChild(li);
+        });
+        filterSongs();
+    }
+
+    async function filterSongs() {
+        const query = normalizeText(filterInput.value);
+        for (const li of songsNode.children) {
+            li.style.display = normalizeText(li.textContent).includes(query) && li.dataset.path.startsWith(currentFolder) ? "" : "none";
+        }
+        if (searchContent.checked) {
+            for (const li of songsNode.children) {
+                const content = await getCachedSong(li.dataset.path);
+                if (content.includes(query) && li.style.display == "none") li.style.display = "";
+            }
+        }
+    }
+
+    function onchangeFolder() {
+        currentFolder = foldersNode.value;
+        filterSongs();
+    }
+
+    async function getCachedSong(songFile) {
+        let content = normalizedSongs[songFile];
+        if (content === undefined) {
+            content = await GET(SONGS + encodeURIComponent(songFile));
+            normalizedSongs[songFile] = normalizeText(content);
+        }
+        return content;
+    }
+
+    async function onclickSong(songPath) {
+        // Add to the active playlist (broker `playlist`, newline-joined paths).
+        const lines = currentListData.slice();
+        if (!lines.includes(songPath)) {
+            lines.push(songPath);
+            await PUT("/var/list/current.txt", lines.join("\n"));
+            currentListData = lines;
+        }
+        refreshRemoveButtons();
+    }
+
+    fetchSongs();
+    connectToFileWebSocket("/var/list/current.txt", async (data) => {
+        currentListData = (data && data.trim()) ? data.trim().split("\n") : [];
+        refreshRemoveButtons();
+    });
+
+    function refreshRemoveButtons() {
+        for (const li of songsNode.children) {
+            const btn = li.querySelector(".remove-btn");
+            if (btn) btn.remove();
+            if (currentListData.includes(li.dataset.path)) {
+                appendButton(li, "×", async (e) => {
+                    e.stopPropagation();
+                    currentListData = currentListData.filter(p => p !== li.dataset.path);
+                    await PUT("/var/list/current.txt", currentListData.join("\n"));
+                    refreshRemoveButtons();
+                }, "remove-btn");
+            }
+        }
+    }
+</script>
+</body>

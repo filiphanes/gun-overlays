@@ -184,11 +184,9 @@ editorPromise.then(() => {
     onChange: () => save(),
   });
 
-  s.connect({
+  s.connectFromUrl({
     ws: WEBSOCKET_URL,            // pair with overlay-ws.html (ws relays the blocks array cleanly)
     space: "editor",
-    password: location.hash.slice(1) || "demo",
-    ...Object.fromEntries(new URLSearchParams(location.search)),
   });
 });
 </script>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<head>
+	<title>Main</title>
+	<style>
+		body {
+			margin: 0;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			height: 100vh;
+			background-color: black;
+			color: #fff;
+			font-family: Arial, sans-serif;
+		}
+
+		#currentVerse {
+			font-size: 5vw;
+			text-align: center;
+			white-space: pre;
+		}
+
+		h1,
+		h2,
+		blockquote,
+		sup {
+			display: none;
+		}
+	</style>
+	<script src="../script.js"></script>
+</head>
+
+<body>
+	<section>
+		<div id="currentVerse"></div>
+	</section>
+	<script>
+		const currentVerseElement = document.getElementById("currentVerse");
+		connectToFileWebSocket("/var/song/verse.txt", data => {
+			currentVerseElement.innerHTML = data;
+		});
+		setInterval(updateTimers, 1000);
+	</script>
+</body>
