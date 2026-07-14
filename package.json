@@ -1,0 +1,9 @@
+{
+  "name": "web-overlays",
+  "private": true,
+  "type": "module",
+  "description": "Static Bible overlay controller + build tooling for search indexes.",
+  "scripts": {
+    "build:search": "node scripts/build_search_indexes.mjs"
+  }
+}

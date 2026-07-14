@@ -60,19 +60,95 @@ button:focus { border-color: #666; }
 /* ---- book filter + history lists ---- */
 .input-group { width: 100%; display: flex; }
 .input-group input { flex-grow: 1; }
-.input-group .clear { max-width: 2rem; }
 
-.books-filter,
-.address-filter {
+/* two search boxes side by side: book/address (left) + content (right) */
+.search-row { display: flex; gap: .5rem; width: 100%; margin: 0 0 .25rem 0; }
+.search-row > .input-group { flex: 1 1 50%; margin: 0; min-width: 0; }
+
+/* content-search results dropdown */
+.search-results {
+  max-height: 30rem;
+  overflow: auto;
+  background: #111;
+  border-radius: .5rem;
+  padding: .2rem 0;
+  margin: 0 0 .5rem;
+}
+.search-results:empty { display: none; }
+.search-results.closed { display: none; }
+.search-results .hit {
+  display: flex;
+  align-items: baseline;
+  width: max-content;
+  min-width: 100%;
+  text-align: left;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  background: #111;
+  padding: .15rem 0;
+  line-height: 1.25;
+  font-size: .9em;
+}
+.search-results .hit:hover, .search-results .hit:focus { background: #333; border-left-color: #9cf; }
+/* The whole list shares one horizontal scrollbar (each row sizes to its
+   content). The reference stays pinned at the left while you scroll, so the
+   verse address is always visible; its background mirrors the row's (incl.
+   hover/focus) to occlude the text scrolling underneath it. */
+.search-results .hit .ref {
+  color: #9cf;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  position: sticky;
+  left: 0;
+  background: #111;
+  padding: 0 .5rem;
+  z-index: 1;
+}
+.search-results .hit:hover .ref,
+.search-results .hit:focus .ref { background: #333; }
+.search-results .hit .text {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: #ccc;
+  padding-right: .5rem;
+}
+.search-results .placeholder { padding: .5rem; color: #777; }
+
+/* control row: books + history + number pads.
+   On wide screens they sit side by side and every column stretches to the
+   tallest (the number-pad column), so the book/history lists match its height
+   and scroll internally. On narrow screens it wraps like the old float layout. */
+.control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: .5rem;
+}
+.control-row > .books-filter,
+.control-row > .address-filter {
   display: block;
   width: 49%;
-  margin: 0 1% 1rem 0;
+  margin: 0;
   padding: 0;
-  height: 10rem;
+  height: 12rem;
   overflow: scroll;
-  float: left;
-  max-width: 15rem;
+  max-width: 13rem;
 }
+.control-row > .control-block { margin: 0; vertical-align: top; }
+
+@media (min-width: 50rem) {
+  .control-row { flex-wrap: nowrap; align-items: flex-start; }
+  .control-row > .books-filter,
+  .control-row > .address-filter {
+    flex: 1 1 12rem;
+    width: auto;
+    max-width: 13rem;
+    height: 20rem;  /* just above the number-pad grid + Show/Hide button */
+  }
+  .control-row > .control-block { flex: 0 0 auto; }
+}
+
 .book-item,
 .address-set,
 .address-remove {
@@ -243,6 +319,100 @@ const s = multiBrokerState({
 const history = van.state([defaultAddress]);   // local UI history (not broadcast)
 const bookFilter = van.state("");
 
+/* ═══════════════════════ Full-text content search ═══════════════════════
+   A Web Worker (search.worker.js) loads the prebuilt binary inverted index
+   for the current translation (built by scripts/build_search_indexes.mjs) and
+   answers queries off the main thread. API-backed translations (no local
+   text) have no index and fall back to disabled. See
+   static/bible/search/COMPARISON.md for why binverted is the only shipped one. */
+const contentQuery = van.state("");
+const searchResults = van.state([]);           // [{ ref, snippet }]
+const searchStatus = van.state("");            // "", "loading", "ready", "error", "No index"
+const searchOpen = van.state(true);            // dropdown visibility tied to input focus/blur
+const hasSearchIndex = (bibleId) => bibles[bibleId] && !bibles[bibleId].api;
+
+let _searchWorker = null, _searchLoaded = null, _searchReqId = 0, _searchReqBible = null, _searchDebounce = null, _searchBlurTimer = null;
+// Two-Enter state for content-search hits: first Enter applies the address,
+// the next Enter on the same hit toggles Show. Reset on every new search.
+let lastAppliedHit = null;
+// packed address table per bible: Uint8Array, 3 bytes/verse [bookIdx, chapter, verse].
+// Loaded lazily from {bible}.addr.bin; ids returned by the worker index into it.
+const _addrCache = {};   // bibleId -> Promise<Uint8Array>
+function addrTable(bibleId) {
+  if (!_addrCache[bibleId])
+    _addrCache[bibleId] = fetch(`/bible/search/${bibleId}.addr.bin`)
+      .then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+      .then(b => new Uint8Array(b));
+  return _addrCache[bibleId];
+}
+// doc id -> { book (abbr), chapter, verse, vcount }
+async function idToAddress(bibleId, id) {
+  const addr = await addrTable(bibleId);
+  const bookIdx = addr[id * 3], chapter = addr[id * 3 + 1], verse = addr[id * 3 + 2];
+  const abbr = bibles[bibleId]?.bookslist?.[bookIdx]?.abbreviation;
+  return { book: abbr, chapter, verse, vcount: 1 };
+}
+function searchWorker() {
+  if (_searchWorker) return _searchWorker;
+  _searchWorker = new Worker(new URL("./search.worker.js", import.meta.url), { type: "module" });
+  _searchWorker.onmessage = (e) => {
+    const m = e.data || {};
+    if (m.type === "ready") { _searchLoaded = m.bible; searchStatus.val = "ready"; runContentSearch(); }
+    else if (m.type === "results") {
+      if (m.id !== _searchReqId) return;        // stale
+      const bible = _searchReqBible;
+      Promise.all((m.ids || []).slice(0, 50).map(id => idToAddress(bible, id).then(a => ({ id, bible, address: a }))))
+        .then(rows => { searchResults.val = rows; searchStatus.val = m.ms != null ? `ready (${m.ms.toFixed(1)}ms)` : "ready"; scheduleSnippetLoad(rows); });
+    } else if (m.type === "error") {
+      searchStatus.val = "error"; searchResults.val = [];
+    }
+  };
+  return _searchWorker;
+}
+function runContentSearch() {
+  const q = contentQuery.val.trim();
+  if (!q) { searchResults.val = []; searchStatus.val = ""; lastAppliedHit = null; return; }
+  const bible = s.bible;
+  if (!hasSearchIndex(bible)) { searchResults.val = []; searchStatus.val = "No index"; lastAppliedHit = null; return; }
+  const w = searchWorker();
+  if (_searchLoaded !== bible) { searchStatus.val = "loading"; w.postMessage({ type: "load", bible }); return; }
+  _searchReqId++;
+  _searchReqBible = bible;
+  lastAppliedHit = null;
+  w.postMessage({ type: "search", id: _searchReqId, query: q, bible });
+}
+function onContentInput(e) {
+  contentQuery.val = e.target.value;
+  clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(runContentSearch, 180);
+}
+
+// Keep the content-search dropdown open while the input or any result button
+// holds focus; hide it shortly after focus leaves both. The short timeout
+// lets focus travel between the input and a result button (on click or
+// ArrowDown) without the dropdown flickering closed in between.
+function keepSearchOpen() { clearTimeout(_searchBlurTimer); searchOpen.val = true; }
+function scheduleSearchHide() {
+  clearTimeout(_searchBlurTimer);
+  _searchBlurTimer = setTimeout(() => { searchOpen.val = false; }, 150);
+}
+
+// Lazy-load chapter text for the current hits (debounced). `ensureChapter` for
+// static bibles fetches a whole book, so we coalesce shortly after results
+// settle rather than on every keystroke; the dataVersion bump re-renders
+// snippets reactively via the `() => snippet(r)` children.
+let _snippetDebounce = null;
+function scheduleSnippetLoad(rows) {
+  clearTimeout(_snippetDebounce);
+  _snippetDebounce = setTimeout(() => {
+    for (const r of rows) {
+      const b = r.bible || s.bible;
+      if (b && r.address?.book && r.address?.chapter)
+        ensureChapter(b, r.address.book, r.address.chapter);
+    }
+  }, 300);
+}
+
 /* ═══════════════════════ Derived state ═══════════════════════ */
 const address  = van.derive(() => ({ bible: s.bible,  book: s.book, chapter: s.chapter, verse: s.verse, vcount: s.vcount }));
 const address2 = van.derive(() => ({ bible: s.bible2, book: s.book, chapter: s.chapter, verse: s.verse, vcount: s.vcount }));
@@ -252,9 +422,11 @@ const bookList      = van.derive(() => bibles[s.bible]?.bookslist || []);
 const bookLength    = van.derive(() => { dataVersion.val; const b = books1.val[s.book]; return b?.chapterCount || Object.keys(b?.chapters || {}).length; });
 const chapterLength = van.derive(() => { dataVersion.val; const b = books1.val[s.book]; return ((b?.chapters || {})[s.chapter] || []).length; });
 
+const parsedFilter = van.derive(() => parseFilter(bookFilter.val));
 const filteredBooks = van.derive(() => {
   const list = bookList.val;
-  return bookFilter.val ? list.filter(matchesBook) : list;
+  const q = parsedFilter.val.bookQuery;
+  return q ? list.filter(b => matchesBook(b, q)) : list;
 });
 
 const addressNext  = van.derive(() => nextVerse({ ...address.val }));
@@ -275,16 +447,72 @@ van.derive(() => ensureChapter(addressNext.val.bible, addressNext.val.book, addr
 van.derive(() => { if (address2.val.bible)     ensureChapter(address2.val.bible,     address2.val.book,     address2.val.chapter); });
 van.derive(() => { if (address2Next.val.bible) ensureChapter(address2Next.val.bible, address2Next.val.book, address2Next.val.chapter); });
 
+// Re-run content search when the translation ( | indexes only for static ones) or
+// the chosen indexer changes.
+van.derive(() => { s.bible; runContentSearch(); });
+
 /* ═══════════════════════ Pure helpers ═══════════════════════ */
-function matchesBook(book) {
-  const prefix = bookFilter.val.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const name = book.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+// normalise for matching: strip diacritics, lowercase, drop dots and whitespace
+const norm = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[.\s]+/g, "");
+
+function matchesBook(book, prefix = "") {
+  prefix = norm(prefix);
+  if (!prefix) return true;
+  const name = norm(book.name);
   return (
     name.startsWith(prefix) ||
-    book.abbreviation.startsWith(prefix) ||
-    (book.aliases && book.aliases.some(a => a.toLowerCase().startsWith(prefix))) ||
-    (prefix.length >= 2 && name.includes(" " + prefix))
+    norm(book.abbreviation).startsWith(prefix) ||
+    norm(book.abb || "").startsWith(prefix) ||
+    (book.aliases && book.aliases.some(a => norm(a).startsWith(prefix))) ||
+    (prefix.length >= 2 && name.includes(prefix))
   );
+}
+
+// Parse a ProPresenter-style query: "<book> [chapter] [verse]".
+// Trailing numeric tokens (incl. "ch:vs" and "vs-vs") are the address;
+// everything before that is the book query. Returns { bookQuery, chapter, verse, vcount }.
+function parseFilter(str) {
+  const tokens = (str || "").trim().split(/\s+/).filter(Boolean);
+  const addr = [];
+  while (tokens.length && /^[\d:-]+$/.test(tokens[tokens.length - 1])) {
+    addr.unshift(tokens.pop());
+  }
+  let chapter, verse, vcount;
+  const cv = (t) => t.match(/^(\d+)(?::(\d+)(?:-(\d+))?)?(?:-(\d+))?$/);
+  if (addr.length === 1) {
+    const m = cv(addr[0]);
+    if (m) {
+      chapter = +m[1];
+      if (m[2] !== undefined) { verse = +m[2]; if (m[3] !== undefined) vcount = +m[3] - +m[2] + 1; }
+      else if (m[4] !== undefined) { verse = +m[1]; vcount = +m[4] - +m[1] + 1; chapter = undefined; }
+    }
+  } else if (addr.length >= 2) {
+    const cm = cv(addr[0]);
+    if (cm) chapter = +cm[1];
+    const vm = addr[1].match(/^(\d+)(?:-(\d+))?$/);
+    if (vm) { verse = +vm[1]; if (vm[2] !== undefined) vcount = +vm[2] - +vm[1] + 1; }
+  }
+  return { bookQuery: tokens.join(" ").trim(), chapter, verse, vcount };
+}
+
+// Pick the single best-matching book abbreviation for a free-text query.
+function bestBookForQuery(query) {
+  const list = bookList.val;
+  if (!query) return undefined;
+  const q = norm(query);
+  if (!q) return undefined;
+  let b = list.find(x => norm(x.abbreviation) === q || norm(x.abb || "") === q);
+  if (b) return b.abbreviation;
+  b = list.find(x => norm(x.name) === q);
+  if (b) return b.abbreviation;
+  b = list.find(x => (x.aliases || []).some(a => norm(a) === q));
+  if (b) return b.abbreviation;
+  b = list.find(x =>
+    norm(x.name).startsWith(q) || norm(x.abbreviation).startsWith(q) ||
+    norm(x.abb || "").startsWith(q) || (x.aliases || []).some(a => norm(a).startsWith(q)));
+  if (b) return b.abbreviation;
+  const filtered = list.filter(book => matchesBook(book, query));
+  return filtered[0]?.abbreviation;
 }
 
 function equalAddresses(a, b) {
@@ -293,11 +521,12 @@ function equalAddresses(a, b) {
     a.verse == b.verse && a.vcount == b.vcount;
 }
 
-function addressAsString(a, showTranslation) {
+function addressAsString(a, showTranslation, useAbbrev = false) {
   if (!a || !a.bible) return "";
   const book = bibles[a.bible].books[a.book];
   if (!book) return "";
-  let out = book.name + " " + a.chapter;
+  const label = useAbbrev ? (book.abb || book.abbreviation || book.name) : book.name;
+  let out = label + " " + a.chapter;
   if (a.verse) {
     out += "," + a.verse;
     if (a.vcount > 1) out += "-" + (+a.verse + a.vcount - 1);
@@ -322,12 +551,96 @@ function addressContent(a, numbers) {
   return content;
 }
 
+// first verse line for a content-search hit, blank until its chapter loads
+function snippet(r) {
+  dataVersion.val;
+  const b = r.bible || s.bible;
+  const book = bibles[b]?.books?.[r.address.book];
+  return book?.chapters?.[r.address.chapter]?.[r.address.verse - 1] || "";
+}
+
 /* ═══════════════════════ Mutators ═══════════════════════ */
 function addToHistory(a) {
   const next = [{ book: a.book, chapter: a.chapter, verse: a.verse, vcount: a.vcount }, ...history.val];
   history.val = next.filter((h, i) => i === 0 || !equalAddresses(h, a));
 }
 const removeHistory = (i) => () => { history.val = history.val.filter((_, idx) => idx !== i); };
+
+// Apply the current search field as a ProPresenter-style address on Enter.
+// Pressing Enter again with an unchanged field toggles Show/Hide, so the same
+// key navigates and then flips the display without touching the mouse.
+let lastAppliedFilter = null;
+function applyFilter() {
+  const value = bookFilter.val;
+  if (value === lastAppliedFilter) { toggleShown(); return; }
+  lastAppliedFilter = value;
+  const p = parseFilter(value);
+  if (p.bookQuery) {
+    const abbr = bestBookForQuery(p.bookQuery);
+    if (abbr) {
+      s.book = abbr;
+      if (p.chapter === undefined) { s.chapter = 1; s.verse = 1; s.vcount = 1; }
+    }
+  }
+  if (p.chapter !== undefined) {
+    s.chapter = p.chapter;
+    s.verse = p.verse ?? 1;
+    s.vcount = p.vcount ?? 1;
+  }
+  if (s.hideOnSelector && !p.chapter && p.bookQuery) s.show = false;
+}
+
+// Content-search hit: first activation applies its address to state, the next
+// activation of the same hit toggles Show (mirrors applyFilter's two-Enter).
+function applyResult(r) {
+  const a = r.address;
+  const key = `${r.bible}:${a.book}:${a.chapter}:${a.verse}`;
+  if (key === lastAppliedHit) { toggleShown(); return; }
+  lastAppliedHit = key;
+  if (r.bible) s.bible = r.bible;
+  s.book = a.book;
+  s.chapter = a.chapter || "";
+  s.verse = a.verse || "";
+  s.vcount = a.vcount || 1;
+}
+
+// Keyboard navigation between the filtered book list and the search field.
+function focusBookItem(offset) {
+  const items = Array.from(document.querySelectorAll(".books-filter .book-item"));
+  if (!items.length) return;
+  const cur = document.activeElement;
+  const i = items.indexOf(cur);
+  let target;
+  if (i < 0) target = offset > 0 ? items[0] : items[items.length - 1];
+  else target = items[Math.max(0, Math.min(items.length - 1, i + offset))];
+  if (target) target.focus();
+}
+function focusHit(offset) {
+  const items = Array.from(document.querySelectorAll(".search-results .hit"));
+  if (!items.length) return;
+  const cur = document.activeElement;
+  const i = items.indexOf(cur);
+  let target;
+  if (i < 0) target = offset > 0 ? items[0] : items[items.length - 1];
+  else target = items[Math.max(0, Math.min(items.length - 1, i + offset))];
+  if (target) target.focus();
+}
+function hitKeydown(e) {
+  if (e.key === "ArrowDown") { e.preventDefault(); focusHit(1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); focusHit(-1); }
+  else if (e.key === "Escape") { e.preventDefault(); document.querySelector(".search-row .input-group:last-child input")?.focus(); }
+}
+function filterKeydown(e) {
+  if (e.key === "Enter") { e.preventDefault(); applyFilter(); }
+  else if (e.key === "ArrowDown") { e.preventDefault(); focusBookItem(1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); focusBookItem(-1); }
+  else if (e.key === "Escape") { e.preventDefault(); e.target.value = ""; bookFilter.val = ""; }
+}
+function bookItemKeydown(e) {
+  if (e.key === "ArrowDown") { e.preventDefault(); focusBookItem(1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); focusBookItem(-1); }
+  else if (e.key === "Escape") { e.preventDefault(); bookFilter.val = ""; document.querySelector('.input-group input')?.focus(); }
+}
 
 const addressSelector = (a) => () => {
   if (s.hideOnSelector) s.show = false;
@@ -455,30 +768,75 @@ function BibleApp() {
   const next2Preview = previewDiv("preview next",  line4Next);
 
   return div({},
-    // book filter + list
-    div({ class: "input-group" },
-      input({ class: "form-control", type: "text", placeholder: "filter",
-              value: () => bookFilter.val, oninput: (e) => bookFilter.val = e.target.value }),
-      button({ type: "button", class: "form-control btn btn-secondary clear",
-               onclick: () => bookFilter.val = "" }, "×"),
+    // two search boxes side by side: address (left) + content (right)
+    div({ class: "search-row" },
+      // address / book search
+      div({ class: "input-group" },
+        input({ class: "form-control", type: "search", autofocus: true,
+                placeholder: "Kniha kapitola verš (napr. Jn 3 16)",
+                value: () => bookFilter.val,
+                oninput: (e) => bookFilter.val = e.target.value,
+                onkeydown: filterKeydown }),
+      ),
+      // full-text content search
+      div({ class: "input-group" },
+        input({ class: "form-control", type: "search",
+                placeholder: () => hasSearchIndex(s.bible) ? "Hľadať v texte…" : "Bez indexu (API preklad)",
+                disabled: () => !hasSearchIndex(s.bible),
+                value: () => contentQuery.val,
+                oninput: onContentInput,
+                onfocus: keepSearchOpen,
+                onblur: scheduleSearchHide,
+                onkeydown: (e) => {
+                  if (e.key === "Escape") { contentQuery.val = ""; searchResults.val = []; }
+                  else if (e.key === "ArrowDown") { e.preventDefault(); focusHit(1); }
+                  else if (e.key === "ArrowUp") { e.preventDefault(); focusHit(-1); }
+                } }),
+      ),
     ),
-    live(div, { class: "books-filter" },
-      () => filteredBooks.val.map(b =>
-        button({ class: () => `book-item btn ${b.abbreviation === s.book ? "btn-primary" : ""}`,
-                 onclick: addressSelector({ book: b.abbreviation }) }, b.name))),
+    // content-search results (under both input boxes)
+    live(div, {
+      class: () => "search-results" + (searchOpen.val ? "" : " closed"),
+      onfocusin: keepSearchOpen,
+      onfocusout: (e) => {
+        const rt = e.relatedTarget;
+        if (!rt || !e.currentTarget.contains(rt)) scheduleSearchHide();
+      },
+    },
+      () => {
+        if (searchStatus.val === "loading") return div({ class: "placeholder" }, "Načítavam index…");
+        if (searchStatus.val === "error")   return div({ class: "placeholder" }, "Chyba indexu");
+        if (searchStatus.val === "No index"){ return div({ class: "placeholder" }, "Preklad bez lokálneho indexu"); }
+        if (!contentQuery.val.trim()) return null;
+        if (!searchResults.val.length) return div({ class: "placeholder" }, "Bez výsledkov");
+        return searchResults.val.map(r =>
+          button({ class: "hit",
+                   onclick: () => applyResult(r),
+                   onkeydown: hitKeydown },
+            span({ class: "ref" }, () => addressAsString({ bible: r.bible || s.bible, ...r.address }, false, true)),
+            span({ class: "text" }, () => snippet(r))));
+      }),
+    // books + history + number-pad controls sit in one flex row so that,
+    // on wide screens, the lists stretch to the number-pad height.
+    div({ class: "control-row" },
+      live(div, { class: "books-filter" },
+        () => filteredBooks.val.map(b =>
+          button({ class: () => `book-item btn ${b.abbreviation === s.book ? "btn-primary" : ""}`,
+                   onclick: addressSelector({ book: b.abbreviation }),
+                   onkeydown: bookItemKeydown }, b.name))),
 
-    // history
-    live(div, { class: "address-filter" },
-      () => history.val.map((addr, i) =>
-        div({ class: "address-item btn-group" },
-          button({ class: () => `address-set btn ${equalAddresses(addr, address.val) ? "btn-primary" : ""}`,
-                   onclick: addressSelector(addr) },
-                 () => addressAsString({ bible: s.bible, ...addr }) || `${addr.book} ${addr.chapter},${addr.verse}`),
-          button({ class: "btn btn-secondary address-remove", onclick: removeHistory(i) }, "×"),
-        ))),
+      // history
+      live(div, { class: "address-filter" },
+        () => history.val.map((addr, i) =>
+          div({ class: "address-item btn-group" },
+            button({ class: () => `address-set btn ${equalAddresses(addr, address.val) ? "btn-primary" : ""}`,
+                     onclick: addressSelector(addr) },
+                   () => addressAsString({ bible: s.bible, ...addr }) || `${addr.book} ${addr.chapter},${addr.verse}`),
+            button({ class: "btn btn-secondary address-remove", onclick: removeHistory(i) }, "×"),
+          ))),
 
-    // chapter controls
-    div({ class: "control-block" },
+      // chapter controls
+      div({ class: "control-block" },
       () => `Kapitola: ${s.chapter} z ${bookLength.val}`,
       NumberPad({ value: bind("chapter"), max: bookLength }),
       button({ class: "btn btn-primary", onclick: () => s.chapter = Math.max(1, s.chapter - 1) }, "⇦"),
@@ -510,6 +868,7 @@ function BibleApp() {
       br(),
       button({ disabled: true, class: "spacer", "aria-label": "empty" }),
     ),
+    ), // end .control-row
 
     // previews
     mainPreview,
